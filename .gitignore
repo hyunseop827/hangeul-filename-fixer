@@ -1,0 +1,34 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+dist-electron/
+release/
+.vite/
+.build/
+.swiftpm/
+build/AppIcon.iconset/
+build/icon-source.png
+*.dmg
+*.blockmap
+latest*.yml
+builder-debug.yml
+
+# local custom files
+custom/
+local/
+local-custom/
+.custom/
+.local/
+*.local
+.env
+.env.*
+!.env.example
+
+# logs and OS files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
