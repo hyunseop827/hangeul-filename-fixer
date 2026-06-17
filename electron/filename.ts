@@ -16,6 +16,13 @@ export interface FileCopyPlan {
   sourceName: string;
   destinationPath: string;
   destinationName: string;
+  verification: FileNameVerification;
+}
+
+export interface FileNameVerification {
+  isNfc: boolean;
+  hasSeparatedHangulJamo: boolean;
+  isSafeForWindows: boolean;
 }
 
 export interface PlanResult {
@@ -64,7 +71,7 @@ export function makePlans(input: PlanInput): PlanResult {
   const rejectedPaths = input.sourcePaths.filter((filePath) => !isRegularFile(filePath));
   const reservedDestinationPaths = new Set<string>();
 
-  const plans = acceptedPaths.map((sourcePath, index) => {
+  const preparedPlans = acceptedPaths.map((sourcePath, index) => {
     const parsed = path.parse(sourcePath);
     const rawStem =
       trimmedBaseName.length === 0
@@ -73,18 +80,100 @@ export function makePlans(input: PlanInput): PlanResult {
           ? trimmedBaseName
           : `${trimmedBaseName} ${String(index + 1).padStart(3, "0")}`;
     const safeStem = windowsSafeStem(rawStem);
-    const firstCandidate = path.join(input.outputDirectory, `${safeStem}${parsed.ext}`);
-    const destinationPath = uniqueDestinationPath(firstCandidate, reservedDestinationPaths);
+    const safeName = `${safeStem}${parsed.ext.normalize("NFC")}`;
 
     return {
       sourcePath,
       sourceName: path.basename(sourcePath),
+      safeName
+    };
+  });
+
+  const plans = preparedPlans.map((preparedPlan) => {
+    const firstCandidate = path.join(input.outputDirectory, preparedPlan.safeName);
+    const destinationPath = uniqueDestinationPath(firstCandidate, reservedDestinationPaths);
+
+    return {
+      sourcePath: preparedPlan.sourcePath,
+      sourceName: preparedPlan.sourceName,
       destinationPath,
-      destinationName: path.basename(destinationPath)
+      destinationName: path.basename(destinationPath),
+      verification: verifyFileName(path.basename(destinationPath))
     };
   });
 
   return { plans, rejectedPaths };
+}
+
+export async function copyNormalizedFiles(input: PlanInput): Promise<PlanResult> {
+  const result = makePlans(input);
+
+  if (result.plans.length === 0) {
+    throw new Error("변환할 수 있는 일반 파일이 없습니다.");
+  }
+
+  const copiedPlans: FileCopyPlan[] = [];
+
+  for (const plan of result.plans) {
+    await fs.promises.copyFile(plan.sourcePath, plan.destinationPath);
+
+    const actualDestinationName = await findActualFileName(plan.destinationPath);
+    const actualDestinationPath = path.join(path.dirname(plan.destinationPath), actualDestinationName);
+    const verifiedPlan = {
+      ...plan,
+      destinationPath: actualDestinationPath,
+      destinationName: actualDestinationName,
+      verification: verifyFileName(actualDestinationName)
+    };
+
+    if (!verifiedPlan.verification.isSafeForWindows) {
+      await fs.promises.rm(actualDestinationPath, { force: true });
+      throw new Error("생성된 파일명이 NFC로 보존되지 않았습니다. 다른 저장 위치를 선택하세요.");
+    }
+
+    copiedPlans.push(verifiedPlan);
+  }
+
+  return { ...result, plans: copiedPlans };
+}
+
+export function verifyFileName(fileName: string): FileNameVerification {
+  const normalizedName = fileName.normalize("NFC");
+  const hasSeparatedHangulJamo = /[\u1100-\u11ff]/u.test(fileName);
+
+  return {
+    isNfc: fileName === normalizedName,
+    hasSeparatedHangulJamo,
+    isSafeForWindows: fileName === normalizedName && !hasSeparatedHangulJamo
+  };
+}
+
+async function findActualFileName(filePath: string): Promise<string> {
+  const directory = path.dirname(filePath);
+  const expectedName = path.basename(filePath);
+  const expectedNfcName = expectedName.normalize("NFC");
+  const targetStat = await fs.promises.stat(filePath);
+  const directoryEntries = await fs.promises.readdir(directory);
+
+  for (const entry of directoryEntries) {
+    if (entry === expectedName) {
+      return entry;
+    }
+  }
+
+  for (const entry of directoryEntries) {
+    if (entry.normalize("NFC") !== expectedNfcName) {
+      continue;
+    }
+
+    const entryPath = path.join(directory, entry);
+    const entryStat = await fs.promises.stat(entryPath);
+    if (entryStat.dev === targetStat.dev && entryStat.ino === targetStat.ino) {
+      return entry;
+    }
+  }
+
+  return expectedName;
 }
 
 function uniqueDestinationPath(firstCandidate: string, reservedDestinationPaths: Set<string>): string {

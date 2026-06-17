@@ -1,12 +1,15 @@
 # Hangeul Filename Fixer
 
+> [NOTICE/WARNING]
+> This is a personal tool under validation. It normalizes Korean filenames on macOS to NFC, but it cannot guarantee correct display across every mail or upload flow. See [Email Attachment Notes](#email-attachment-notes).
+
 This is the short English README. The Korean README is available here: [README.md](README.md)
 
 <p align="center">
   <img src="images/app-icon.png" alt="Hangeul Filename Fixer app icon" width="120" />
 </p>
 
-A small macOS app that creates Windows-safe copies of files with Korean filenames.
+A small macOS app that creates NFC-normalized copies of files with Korean filenames.
 
 On macOS, a filename may look normal:
 
@@ -14,13 +17,13 @@ On macOS, a filename may look normal:
 홍길동_레포트_진짜최종_찐최종.hwp
 ```
 
-But on Windows or some submission systems, it can appear decomposed:
+But on Windows or some upload flows, it can appear decomposed:
 
 ```text
 ㅎㅗㅇㄱㅣㄹㄷㅗㅇ_ㄹㅔㅍㅗㅌㅡ_ㅈㅣㄴㅉㅏㅊㅚㅈㅗㅇ_ㅉㅣㄴㅊㅚㅈㅗㅇ.hwp
 ```
 
-This app normalizes the filename and creates a new copy.  
+This app normalizes the filename and creates a new copy.
 The original file is never modified.
 
 ## Download and First Launch
@@ -57,8 +60,23 @@ This only removes the macOS quarantine flag from the downloaded app. Run it only
 1. Drop or select one file.
 2. Check the current macOS filename.
 3. Preview how it may appear on Windows.
-4. Keep the original name or enter a new name.
-5. Create a Windows-safe copy.
+4. Keep the Korean name as NFC or enter a custom name.
+5. Create a single NFC-normalized copy and attach that copy when sharing the file.
+
+## Email Attachment Notes
+
+In local tests, generated NFC copies displayed correctly on Windows through **Naver Mail**, **Daum Mail**, and **Safari + Gmail**.
+
+However, **Chrome + Gmail web attachments** may still put a decomposed Korean filename into the Gmail raw message. This appears to be a Chrome/Gmail web attachment normalization issue, not a problem with the generated file itself.
+
+| Attachment path | Windows result | Note |
+| --- | --- | --- |
+| Chrome + Gmail web attachment | Broken | Gmail raw message contains a decomposed Korean attachment filename |
+| Safari + Gmail web attachment | OK | Gmail raw message contains an NFC Korean attachment filename |
+| Chrome + Naver Mail | OK | Verified in testing |
+| Chrome + Daum Mail | OK | Verified in testing |
+
+If you need to keep Korean filenames in Gmail, attach the file from **Safari** instead of Chrome.
 
 ## Screenshots
 
@@ -76,7 +94,7 @@ This only removes the macOS quarantine flag from the downloaded app. Run it only
     <th width="50%">Rename</th>
   </tr>
   <tr>
-    <td width="50%">Normalize the original filename for Windows.</td>
+    <td width="50%">Keep the Korean name and normalize it to NFC.</td>
     <td width="50%">Enter a new base name. The original extension is kept.</td>
   </tr>
   <tr>
@@ -92,8 +110,13 @@ This only removes the macOS quarantine flag from the downloaded app. Run it only
 ### Create the Copy
 
 <p align="left">
-  <img src="images/file-button-select.png" alt="Create Windows-safe copy screen" width="620" />
+  <img src="images/file-button-select.png" alt="Create NFC copy screen" width="620" />
 </p>
+
+When sharing the file, attach the generated copy.
+The app reads the created file back and verifies that the stored filename is NFC-normalized.
+
+When using Gmail with Korean filenames, attach the file from Safari rather than Chrome.
 
 ## Supported Files
 

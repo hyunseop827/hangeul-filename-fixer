@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { makePlans, type PlanInput } from "./filename.js";
+import { copyNormalizedFiles, makePlans, type PlanInput } from "./filename.js";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -91,17 +91,7 @@ ipcMain.handle("files:preview", (_event, input: PlanInput) => {
 });
 
 ipcMain.handle("files:convert", async (_event, input: PlanInput) => {
-  const result = makePlans(input);
-
-  if (result.plans.length === 0) {
-    throw new Error("변환할 수 있는 일반 파일이 없습니다.");
-  }
-
-  for (const plan of result.plans) {
-    await fs.promises.copyFile(plan.sourcePath, plan.destinationPath);
-  }
-
-  return result;
+  return copyNormalizedFiles(input);
 });
 
 ipcMain.handle("files:reveal", (_event, filePaths: string[]) => {

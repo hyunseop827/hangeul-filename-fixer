@@ -6,6 +6,10 @@ type Status = {
   message: string;
 };
 
+type NameMode = "keep" | "rename";
+
+const emptyPreview: PlanResult = { plans: [], rejectedPaths: [] };
+
 const forbiddenCharacters = /[<>:"/\\|?*\u0000-\u001f]/g;
 const reservedDeviceNames = new Set([
   "CON",
@@ -93,9 +97,9 @@ const jongseongPreview = [
 function App() {
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [baseName, setBaseName] = useState("");
-  const [keepOriginalName, setKeepOriginalName] = useState(true);
+  const [nameMode, setNameMode] = useState<NameMode>("keep");
   const [outputDirectory, setOutputDirectory] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PlanResult>({ plans: [], rejectedPaths: [] });
+  const [preview, setPreview] = useState<PlanResult>(emptyPreview);
   const [createdPath, setCreatedPath] = useState<string | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -107,8 +111,8 @@ function App() {
     ? `${sourceSafeStem}${sourceParts.extension}`
     : "";
   const windowsOriginalName = sourceName ? windowsOriginalDisplayPreview(sourceName) : "";
-  const customNameMissing = !keepOriginalName && baseName.trim().length === 0;
-  const effectiveBaseName = keepOriginalName ? "" : baseName;
+  const customNameMissing = nameMode === "rename" && baseName.trim().length === 0;
+  const effectiveBaseName = nameMode === "keep" ? "" : baseName;
 
   const input: PlanInput | null = useMemo(() => {
     if (!sourcePath || !outputDirectory) {
@@ -127,7 +131,7 @@ function App() {
 
     async function refreshPreview() {
       if (!input) {
-        setPreview({ plans: [], rejectedPaths: [] });
+        setPreview(emptyPreview);
         return;
       }
 
@@ -170,6 +174,7 @@ function App() {
     setSourcePath(nextPath);
     setOutputDirectory(directoryFromPath(nextPath));
     setBaseName("");
+    setNameMode("keep");
     setCreatedPath(null);
     setStatus(null);
   }
@@ -191,13 +196,13 @@ function App() {
   }
 
   function useOriginalName() {
-    setKeepOriginalName(true);
+    setNameMode("keep");
     setCreatedPath(null);
     setStatus(null);
   }
 
   function useRenameMode() {
-    setKeepOriginalName(false);
+    setNameMode("rename");
     setCreatedPath(null);
     setStatus(null);
   }
@@ -214,13 +219,13 @@ function App() {
       setCreatedPath(destination);
       setStatus({
         tone: "success",
-        message: "완료되었습니다. 원본은 그대로 두고 사본을 만들었습니다."
+        message: "완료되었습니다. NFC 파일명 사본을 확인했습니다."
       });
     } catch {
       setCreatedPath(null);
       setStatus({
         tone: "error",
-        message: "파일을 만들 수 없습니다. 저장 위치 권한이나 파일명을 확인하세요."
+        message: "파일명을 NFC로 보존하지 못했습니다. 다른 저장 위치를 선택하세요."
       });
     }
   }
@@ -228,7 +233,7 @@ function App() {
   function clearFile() {
     setSourcePath(null);
     setOutputDirectory(null);
-    setPreview({ plans: [], rejectedPaths: [] });
+    setPreview(emptyPreview);
     setCreatedPath(null);
     setStatus(null);
   }
@@ -281,14 +286,14 @@ function App() {
           <div className="segmented-control">
             <button
               type="button"
-              className={keepOriginalName ? "active" : ""}
+              className={nameMode === "keep" ? "active" : ""}
               onClick={useOriginalName}
             >
               기존 이름 유지
             </button>
             <button
               type="button"
-              className={!keepOriginalName ? "active" : ""}
+              className={nameMode === "rename" ? "active" : ""}
               onClick={useRenameMode}
             >
               이름 바꾸기
@@ -303,7 +308,7 @@ function App() {
                 setBaseName(event.target.value);
                 setCreatedPath(null);
               }}
-              disabled={keepOriginalName}
+              disabled={nameMode !== "rename"}
               placeholder="확장자명을 제외하고 입력해주세요"
             />
           </label>
@@ -311,7 +316,7 @@ function App() {
           <div className="section-label">결과</div>
           <div className="result-box">
             <span>생성될 사본 이름</span>
-            <strong>{resultName ?? "저장 위치를 확인하는 중입니다."}</strong>
+            <strong>{resultName || "저장 위치를 확인하는 중입니다."}</strong>
             <small>{outputDirectory ?? "원본 폴더"}</small>
           </div>
 
@@ -320,7 +325,7 @@ function App() {
               저장 위치 변경
             </button>
             <button type="button" className="primary-action" disabled={!canConvert} onClick={convertFile}>
-              Windows 호환 사본 만들기
+              NFC 사본 만들기
             </button>
           </div>
 
