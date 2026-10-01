@@ -1,5 +1,6 @@
-# Type check, tests and a build on every push to main and every pull request. On main, a passing run then calls
-# release.yml, which releases the version in package.json if it is new (see there).
+# Checks every push to main and every pull request: release readiness (version, release notes), type check, tests,
+# and the real DMG, packaged and inspected. On main, a passing run then calls release.yml, which releases the version
+# in package.json if it is new (see there).
 name: CI
 
 on:
@@ -15,14 +16,21 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
-    name: 타입 검사, 테스트, 빌드
+    name: 검사, 테스트, DMG
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - name: 체크아웃 (태그 포함)
+        uses: actions/checkout@v7
         with:
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - uses: actions/setup-node@v7
@@ -30,10 +38,29 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - name: 의존성 설치
+        run: npm ci
+
+      # The same decision the release job makes, without publishing: a missing version bump, a stale
+      # .github/release-notes.md header or a lockfile out of step fails here, before the merge.
+      - name: 버전과 릴리스 노트 확인
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-plan.mjs --check
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 테스트
+        run: npm test
+
+      - name: DMG 만들기 (빌드 포함)
+        run: npm run dist
+
+      - name: DMG 확인
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          scripts/verify-dmg.sh "release/hangeul-filename-fixer-$version.dmg" "$version"
 
   release:
     name: 릴리스

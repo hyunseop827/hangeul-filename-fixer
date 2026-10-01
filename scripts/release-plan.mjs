@@ -1,13 +1,16 @@
 // Decides what the release job (.github/workflows/release.yml) does for the checked-out commit.
 // Reads the version from package.json and the notes from .github/release-notes.md, compares them with the version
-// tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT. Run `node scripts/release-plan.mjs` locally
-// (needs gh) to see what CI would do with the current commit.
+// tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT.
+//   node scripts/release-plan.mjs --check   only validates (CI runs this on every push and pull request, so a
+//                                           missing version bump or notes header shows up before the merge)
+// Run it locally (needs gh) to see what CI would do with the current commit.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "hyunseop827/hangeul-filename-fixer";
 const inCi = process.env.GITHUB_ACTIONS === "true";
+const checkOnly = process.argv.includes("--check");
 const notesPath = ".github/release-notes.md";
 // Files that end up in the DMG. Changing them after a release needs a new version; tests, scripts and docs do not.
 const appInputs = [
@@ -71,7 +74,7 @@ const head = git("rev-parse", "HEAD^{commit}");
 if (process.env.GITHUB_SHA && process.env.GITHUB_SHA !== head) {
   fail("체크아웃한 커밋이 테스트한 커밋과 다릅니다.");
 }
-if (inCi) {
+if (inCi && !checkOnly) {
   git("fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main");
   if (spawnSync("git", ["merge-base", "--is-ancestor", head, "refs/remotes/origin/main"]).status !== 0) {
     fail("main 에 없는 커밋은 릴리스하지 않습니다.");
@@ -127,7 +130,8 @@ if (releaseState === "published") {
       "그 커밋의 CI 실행에서 'Re-run failed jobs'로 마치거나, 버전을 올리세요. 태그는 옮기지 않습니다."
   );
 } else {
-  console.log(`${tag} 를 릴리스합니다 (태그: ${tagCommit ? "있음" : "없음"}, 릴리스: ${releaseState}).`);
+  const when = checkOnly ? "main 에 올라가면 " : "";
+  console.log(`${when}${tag} 를 릴리스합니다 (태그: ${tagCommit ? "있음" : "없음"}, 릴리스: ${releaseState}).`);
 }
 
 const outputs = {
@@ -138,6 +142,9 @@ const outputs = {
   tag_exists: Boolean(tagCommit),
   release_state: releaseState
 };
+if (checkOnly) {
+  process.exit(0);
+}
 if (process.env.GITHUB_OUTPUT) {
   fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(outputs).map(([key, value]) => `${key}=${value}\n`).join(""));
 } else {

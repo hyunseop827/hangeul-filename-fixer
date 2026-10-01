@@ -28,7 +28,8 @@ electron/naming.ts    파일명 규칙: NFC, 금지 문자, 예약 이름, 분�
 electron/filename.ts  복사 계획, 중복 이름, 복사, quarantine 유지, NFC 확인 (node:fs 사용)
 src/App.tsx           React 화면 전체
 scripts/dev.mjs       개발 실행기 (Vite JS API + Electron)
-scripts/release-plan.mjs  CI가 릴리스할지 정하는 스크립트 (로컬에서 돌려 결과 미리 보기)
+scripts/release-plan.mjs  CI가 릴리스할지 정하는 스크립트 (로컬에서 돌려 결과 미리 보기, `--check`는 검사만)
+scripts/verify-dmg.sh     DMG 안 앱이 맞는 버전·서명·arm64인지 확인
 .github/workflows/    ci.yml(푸시·PR 검사, main에서는 이어서 release.yml 호출), release.yml(DMG·태그·릴리스)
 .github/release-notes.md  다음(또는 현재) 버전의 릴리스 노트
 tests/*.test.ts       node:test 단위 테스트
@@ -101,9 +102,9 @@ tests/*.test.ts       node:test 단위 테스트
 
 ### 릴리스는 `main`에 올리면 자동입니다
 
-`main`에 푸시하면 CI(`ci.yml`)가 타입 검사·테스트·빌드를 하고, 통과하면 `release.yml`이 `package.json`의 버전을 봅니다.
+푸시와 PR마다 CI(`ci.yml`)가 `release-plan.mjs --check`(버전·노트·버전 안 올린 앱 변경), 타입 검사, 테스트, 실제 DMG 패키징과 `verify-dmg.sh`를 돌립니다. 그래서 실수는 합치기 전에 드러납니다. `main` 푸시가 통과하면 `release.yml`이 `package.json`의 버전을 봅니다.
 
-- 아직 릴리스되지 않은 버전이면: DMG 빌드 → 그 커밋에 `vX.Y.Z` 태그(메시지는 `.github/release-notes.md`) → GitHub Release 공개(노트 + 설치 안내, DMG, SHA-256) → 다시 받아 확인.
+- 아직 릴리스되지 않은 버전이면: DMG 빌드와 확인 → 그 커밋에 `vX.Y.Z` 태그(메시지는 `.github/release-notes.md`) → GitHub Release 공개(노트 + 설치 안내, `hangeul-filename-fixer-X.Y.Z.dmg`와 고정 이름 `hangeul-filename-fixer.dmg`, 각각의 SHA-256) → README의 "최신 버전" 링크로 다시 받아 같은 파일인지 확인.
 - 이미 릴리스된 버전이면 아무것도 하지 않습니다. 단, 그 태그 뒤로 **앱 파일**이 바뀌었는데 버전을 안 올렸으면 실패합니다.
   앱 파일: `electron/`, `src/`, `public/`, `build/`, `index.html`, `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.electron.json` (`scripts/release-plan.mjs`의 `appInputs`)
 - 봇은 `main`에 커밋하지 않습니다. 태그만 만듭니다.
@@ -114,7 +115,7 @@ tests/*.test.ts       node:test 단위 테스트
 1. `git fetch --tags origin`으로 CI가 만든 태그를 받아 온 뒤 버전을 고릅니다. 지금 버전이 이미 태그돼 있으면 다음 버전으로 올립니다(버그 수정은 patch, 기능 추가는 minor).
    `npm version patch --no-git-tag-version`처럼 올리면 `package.json`과 `package-lock.json`이 함께 바뀝니다. 로컬에서 이미 새 버전을 준비 중이면 또 올리지 말고 노트만 고칩니다.
 2. `.github/release-notes.md`의 첫 줄을 `# vX.Y.Z`(앱 버전과 같게)로 바꾸고, 그 아래에 사용자가 알아야 할 변화를 3~5줄로 적습니다. 사용자가 커밋 전에 고칠 수 있습니다.
-3. `npm run typecheck && npm test && npm run build`를 돌리고, `node scripts/release-plan.mjs`로 CI가 무엇을 할지 확인합니다(`gh` 필요).
+3. `npm run typecheck && npm test && npm run build`를 돌리고, `node scripts/release-plan.mjs --check`로 CI가 무엇을 할지 확인합니다(`gh` 필요). 패키징을 바꿨다면 `npm run dist` 후 `scripts/verify-dmg.sh release/hangeul-filename-fixer-X.Y.Z.dmg X.Y.Z`도 돌립니다.
    워크플로를 고쳤다면 `actionlint .github/workflows/*.yml`도 돌립니다.
 4. 문서만 바꾼 변경은 버전을 올리지 않습니다.
 

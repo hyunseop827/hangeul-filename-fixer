@@ -26,9 +26,9 @@ Windows 컴퓨터나 학교 교수님한테는 이렇게 깨져 보일 수 있�
 
 ## 다운로드 및 처음 실행
 
-**[최신 버전 다운로드 (GitHub Releases)](https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest)**
+**[최신 버전 DMG 바로 받기](https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest/download/hangeul-filename-fixer.dmg)**
 
-릴리스 페이지에서 `hangeul-filename-fixer-<버전>.dmg` 파일을 받으세요. 소스 코드는 이 저장소에 있습니다.
+버전별 파일과 릴리스 노트는 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 있습니다. 소스 코드는 이 저장소에 있습니다.
 
 **요구 사항:** Apple Silicon(M1 이상) Mac, macOS 12 Monterey 이상. Intel Mac은 아직 지원하지 않습니다. 앱 화면은 한국어입니다.
 
@@ -240,6 +240,7 @@ src/
 scripts/
   dev.mjs                 Vite 개발 서버와 Electron을 함께 실행
   release-plan.mjs        새 버전을 릴리스할지 판단 (CI가 사용)
+  verify-dmg.sh           DMG 안 앱의 버전·서명·아키텍처 확인 (CI가 사용)
 
 .github/
   workflows/ci.yml        푸시·PR마다 타입 검사, 테스트, 빌드. main에서는 이어서 릴리스

@@ -1,11 +1,14 @@
 # Releases the version in package.json. Called by ci.yml after the checks pass on a push to main; nothing else
 # starts it, so every release comes from a tested commit on main and a person never pushes a tag.
 #
-# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg (+ .sha256), tags the commit v<version>
-#   with .github/release-notes.md as the message, publishes the GitHub release with those notes and install notes,
-#   attaches the dmg and its checksum, then downloads both back and checks them.
+# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg and checks it (scripts/verify-dmg.sh),
+#   tags the commit v<version> with .github/release-notes.md as the message, publishes the GitHub release with those
+#   notes and install notes, attaches the dmg and its checksum plus the same dmg under the fixed name
+#   hangeul-filename-fixer.dmg (+ .sha256), then downloads the fixed name back through
+#   https://github.com/<owner>/<repo>/releases/latest/download/hangeul-filename-fixer.dmg (the README link) and checks it.
 # - Version already released: nothing to do, unless the app changed since its tag without a new version, which fails.
-# - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind).
+# - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind), and
+#   downloads a release that this commit already published again to check it.
 # scripts/release-plan.mjs makes these decisions; run it locally to see what CI will do.
 name: Release
 
@@ -54,18 +57,22 @@ jobs:
         if: steps.plan.outputs.publish == 'true'
         run: npm ci
 
-      - name: DMG 만들기
+      - name: DMG 만들고 확인
         if: steps.plan.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
           npm run dist
+          scripts/verify-dmg.sh "release/hangeul-filename-fixer-$VERSION.dmg" "$VERSION"
           cd release
+          # The same dmg under a fixed name, with its own checksum line (shasum -c works on the downloaded file).
+          cp "hangeul-filename-fixer-$VERSION.dmg" hangeul-filename-fixer.dmg
           shasum -a 256 "hangeul-filename-fixer-$VERSION.dmg" > "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          shasum -a 256 hangeul-filename-fixer.dmg > hangeul-filename-fixer.dmg.sha256
           cat "hangeul-filename-fixer-$VERSION.dmg.sha256"
 
-      # Only after the dmg is built, so a failed build never leaves a tag behind. The token is handed to this one
-      # git command (the checkout keeps no credentials), the way actions/checkout itself authenticates.
+      # Only after the dmg is built and checked, so a failed build never leaves a tag behind. The token is handed to
+      # this one git command (the checkout keeps no credentials), the way actions/checkout itself authenticates.
       - name: 버전 태그 만들기
         if: steps.plan.outputs.publish == 'true' && steps.plan.outputs.tag_exists == 'false'
         env:
@@ -89,6 +96,7 @@ jobs:
           RELEASE_STATE: ${{ steps.plan.outputs.release_state }}
         run: |
           dmg="release/hangeul-filename-fixer-$VERSION.dmg"
+          latest="release/hangeul-filename-fixer.dmg"
           notes="$RUNNER_TEMP/release-notes.md"
           {
             cat "$RUNNER_TEMP/release-body.md"
@@ -100,8 +108,10 @@ jobs:
             echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 \`시스템 설정\` → \`개인정보 보호 및 보안\` → \`그래도 열기\`를 누르세요. 자세한 방법은 [README](https://github.com/$GH_REPO#처음-여는-방법)에 있습니다."
             echo
             echo "SHA-256 (\`${dmg##*/}\`): \`$(cut -d' ' -f1 < "$dmg.sha256")\`"
+            echo
+            echo "\`${latest##*/}\`은 같은 파일의 고정 이름입니다. 항상 최신 버전: https://github.com/$GH_REPO/releases/latest/download/${latest##*/}"
           } > "$notes"
-          title="한글 파일명 정리기 $TAG"
+          title="한글 파일명 정리기 $VERSION"
           if [[ "$RELEASE_STATE" == none ]]; then
             gh release create "$TAG" --draft --verify-tag --title "$title" --notes-file "$notes"
           fi
@@ -110,22 +120,47 @@ jobs:
             echo "::error::$TAG 릴리스가 초안이 아닙니다 (isDraft: '$is_draft'). 이미 공개된 릴리스는 건드리지 않습니다."
             exit 1
           fi
-          gh release upload "$TAG" "$dmg" "$dmg.sha256" --clobber
+          gh release upload "$TAG" "$dmg" "$dmg.sha256" "$latest" "$latest.sha256" --clobber
           gh release edit "$TAG" --title "$title" --notes-file "$notes" --draft=false --prerelease=false --latest
 
-      - name: 올린 파일 다시 받아 확인
+      - name: README 링크로 다시 받아 확인
         if: steps.plan.outputs.verify == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.plan.outputs.tag }}
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
+          built="$GITHUB_WORKSPACE/release/hangeul-filename-fixer-$VERSION.dmg" # missing on a re-run that built nothing
           dir="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-verify.XXXXXX")"
           trap 'rm -rf -- "$dir"' EXIT
           cd "$dir"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "hangeul-filename-fixer-$VERSION.dmg" \
-            --pattern "hangeul-filename-fixer-$VERSION.dmg.sha256"
-          shasum -a 256 -c "hangeul-filename-fixer-$VERSION.dmg.sha256"
-          hdiutil verify -quiet "hangeul-filename-fixer-$VERSION.dmg"
-          echo "OK  $TAG"
+          server="https://github.com/$GITHUB_REPOSITORY/releases"
+          # The README link serves the latest release. A re-run for an older version checks that version's own copy.
+          base="$server/latest/download"
+          expected=""
+          if [[ ! -f "$built" ]]; then
+            latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name' || true)"
+            if [[ "$latest_tag" != "$TAG" ]]; then base="$server/download/$TAG"; fi
+            expected="$(curl -fsSL "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg.sha256" | cut -d' ' -f1)"
+            [[ -n "$expected" ]] || { echo "::error::$TAG 의 체크섬 파일을 받지 못했습니다."; exit 1; }
+          fi
+          same() { # the download is the dmg of this release: built in this run, or matching the release's checksum
+            if [[ -f "$built" ]]; then cmp -s hangeul-filename-fixer.dmg "$built"; else [[ "$(shasum -a 256 hangeul-filename-fixer.dmg | cut -d' ' -f1)" == "$expected" ]]; fi
+          }
+          # The latest link can lag a few seconds behind the publish.
+          for attempt in 1 2 3 4 5 6; do
+            rm -f hangeul-filename-fixer.dmg hangeul-filename-fixer.dmg.sha256
+            if curl -fsSL -o hangeul-filename-fixer.dmg "$base/hangeul-filename-fixer.dmg" \
+              && curl -fsSL -o hangeul-filename-fixer.dmg.sha256 "$base/hangeul-filename-fixer.dmg.sha256" \
+              && same; then
+              break
+            fi
+            if [[ $attempt == 6 ]]; then
+              echo "::error::$base/hangeul-filename-fixer.dmg 가 $TAG 의 DMG와 다르거나 받아지지 않습니다."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          shasum -a 256 -c hangeul-filename-fixer.dmg.sha256
+          hdiutil verify -quiet hangeul-filename-fixer.dmg
+          echo "OK  $base/hangeul-filename-fixer.dmg ($TAG)"

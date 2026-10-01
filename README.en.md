@@ -30,9 +30,9 @@ The original file is never modified.
 
 ## Download and First Launch
 
-**[Download the latest release (GitHub Releases)](https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest)**
+**[Download the latest DMG](https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest/download/hangeul-filename-fixer.dmg)**
 
-Download `hangeul-filename-fixer-<version>.dmg` from the release page.
+Versioned files and release notes are on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases).
 The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
 **Requirements:** an Apple Silicon (M1 or later) Mac with macOS 12 Monterey or later. Intel Macs are not supported yet. The app UI is in Korean.

@@ -102,7 +102,7 @@ NFC 사본 만들기 ── convert ──────────────�
 
 - `npm run build`: 화면 타입 검사 → `tsc -p tsconfig.electron.json`(`dist-electron/`, 매번 비우고 다시 생성) → `vite build`(`dist/`)
 - `npm run dist`: electron-builder로 DMG 생성. `--publish never`라서 electron-builder가 직접 GitHub에 올리지 않습니다.
-- GitHub Actions: `ci.yml`은 푸시·PR마다 macOS 러너에서 `typecheck`, `test`, `build`를 돌리고, `main` 푸시가 통과하면 `release.yml`을 부릅니다. `release.yml`은 `scripts/release-plan.mjs`로 `package.json` 버전과 `.github/release-notes.md`, 태그, 릴리스 상태를 비교해서 새 버전일 때만 DMG 빌드 → 태그 → GitHub Release 공개 → 다시 받아 확인을 합니다. 봇은 `main`에 커밋하지 않고, 릴리스 빌드는 다른 워크플로가 만든 캐시를 쓰지 않도록 npm 캐시를 끕니다.
+- GitHub Actions: `ci.yml`은 푸시·PR마다 macOS 러너에서 `release-plan.mjs --check`, `typecheck`, `test`, `npm run dist`, `verify-dmg.sh`(DMG 안 앱의 버전·서명·arm64)를 돌리고, `main` 푸시가 통과하면 `release.yml`을 부릅니다. `release.yml`은 `scripts/release-plan.mjs`로 `package.json` 버전과 `.github/release-notes.md`, 태그, 릴리스 상태를 비교해서 새 버전일 때만 DMG 빌드와 확인 → 태그 → GitHub Release 공개(버전 붙은 DMG와 고정 이름 DMG) → README 링크로 다시 받아 확인을 합니다. Menu Pulse, Finder Presets와 같은 방식입니다. 봇은 `main`에 커밋하지 않고, 릴리스 빌드는 다른 워크플로가 만든 캐시를 쓰지 않도록 npm 캐시를 끕니다.
 - 빌드한 Mac의 아키텍처(현재 arm64)용으로만 만들어집니다. Electron 42의 최소 macOS는 12입니다.
 - `electronLanguages: ["ko", "en"]`로 Chromium 언어 팩을 줄였습니다.
 - 앱 표시 이름은 `build/ko.lproj`, `build/en.lproj`의 `InfoPlist.strings`로 현지화하고, DMG 안의 번들 이름은 `한글 파일명 정리기.app`입니다.
