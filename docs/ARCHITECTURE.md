@@ -101,7 +101,8 @@ NFC 사본 만들기 ── convert ──────────────�
 ## 7. 빌드와 배포
 
 - `npm run build`: 화면 타입 검사 → `tsc -p tsconfig.electron.json`(`dist-electron/`, 매번 비우고 다시 생성) → `vite build`(`dist/`)
-- `npm run dist`: electron-builder로 DMG 생성. `--publish never`라서 GitHub에 자동 업로드하지 않습니다.
+- `npm run dist`: electron-builder로 DMG 생성. `--publish never`라서 electron-builder가 직접 GitHub에 올리지 않습니다.
+- GitHub Actions: `ci.yml`은 푸시·PR마다 macOS 러너에서 `typecheck`, `test`, `build`를 돌립니다. `release.yml`은 수동 실행으로 버전 올리기, CHANGELOG 정리(`scripts/release-changelog.mjs`), DMG 빌드, 커밋·태그 push, GitHub Release 생성을 합니다. 릴리스 빌드는 다른 워크플로가 만든 캐시를 쓰지 않도록 npm 캐시를 끕니다.
 - 빌드한 Mac의 아키텍처(현재 arm64)용으로만 만들어집니다. Electron 42의 최소 macOS는 12입니다.
 - `electronLanguages: ["ko", "en"]`로 Chromium 언어 팩을 줄였습니다.
 - 앱 표시 이름은 `build/ko.lproj`, `build/en.lproj`의 `InfoPlist.strings`로 현지화하고, DMG 안의 번들 이름은 `한글 파일명 정리기.app`입니다.

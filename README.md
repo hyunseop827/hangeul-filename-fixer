@@ -1,5 +1,7 @@
 # Hangeul Filename Fixer / 한글 파일명 정리기
 
+[![CI](https://github.com/hyunseop827/hangeul-filename-fixer/actions/workflows/ci.yml/badge.svg)](https://github.com/hyunseop827/hangeul-filename-fixer/actions/workflows/ci.yml)
+
 > [!WARNING]
 > 아직 여러 환경에서 테스트 중인 개인용 도구입니다. 한글 파일명을 Windows에서 덜 깨지게 정리하지만, **모든 메일/제출 사이트에서 100% 정상 표시를 보장하진 않습니다.**
 > 자세한 테스트 결과는 [메일 첨부 주의](#메일-첨부-주의)에 정리해뒀습니다.
@@ -236,7 +238,12 @@ src/
   global.d.ts   window.hangeulFilenameFixer 타입 선언
 
 scripts/
-  dev.mjs       Vite 개발 서버와 Electron을 함께 실행
+  dev.mjs                 Vite 개발 서버와 Electron을 함께 실행
+  release-changelog.mjs   릴리스 때 CHANGELOG 정리, 릴리스 노트 생성
+
+.github/workflows/
+  ci.yml        푸시·PR마다 타입 검사, 테스트, 빌드
+  release.yml   버전 올리기, DMG 빌드, 태그, GitHub Release 업로드
 
 tests/          node:test 단위 테스트 (파일명 규칙, 복사·확인)
 
@@ -271,6 +278,18 @@ package.json    스크립트, 개발 의존성, electron-builder(DMG) 설정
 
 **DMG 결과물은 `release/hangeul-filename-fixer-<버전>.dmg`에 만들어집니다.** 빌드한 Mac의 아키텍처(현재 Apple Silicon)용입니다.
 
+### 배포 (GitHub Actions)
+
+배포는 GitHub Actions의 `Release` 워크플로가 한 번에 처리합니다.
+
+1. 바뀐 내용을 `CHANGELOG.md`의 `[Unreleased]` 아래에 적어 `main`에 올립니다. 비어 있으면 배포가 멈춥니다.
+2. GitHub 저장소의 `Actions` 탭 → `Release` → `Run workflow`를 누릅니다.
+3. 올릴 버전을 고릅니다. `patch`(1.0.0 → 1.0.1), `minor`(→ 1.1.0), `major`(→ 2.0.0)
+4. 실행하면 테스트 → 버전 올리기 → `CHANGELOG.md`의 `[Unreleased]`를 새 버전으로 정리 → DMG 빌드 → 커밋과 `vX.Y.Z` 태그를 `main`에 올리기 → GitHub Release에 DMG와 SHA-256 파일 업로드까지 진행합니다.
+
+`시험 실행`을 켜면 DMG만 만들어 워크플로 결과물(Artifacts)로 올리고, 커밋·태그·릴리스는 만들지 않습니다.<br>
+푸시와 PR마다 `CI` 워크플로가 타입 검사, 테스트, 빌드를 돌립니다. 결과는 README 맨 위 배지에서 볼 수 있습니다.
+
 ### 주의 사항
 
 현재 DMG는 개인용 ad-hoc signed 빌드입니다.<br>
@@ -299,6 +318,4 @@ Apple 공증을 거치지 않았기 때문에 다른 Mac에서 처음 실행할 
 
 ### 버전 기록
 
-- v1.0.0: 초기 배포
-
-자세한 변경 내역은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
+버전별 변경 내역은 [CHANGELOG.md](CHANGELOG.md), 배포 파일은 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 있습니다.

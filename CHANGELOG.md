@@ -55,6 +55,7 @@
 - `npm run dist`가 GitHub에 자동으로 배포하지 않도록 `--publish never`를 붙였습니다.
 - README 스크린샷을 현재 화면으로 다시 만들었습니다.
 - `AGENTS.md`, `CLAUDE.md`, `docs/` 문서를 추가했습니다.
+- GitHub Actions를 추가했습니다. `CI`는 푸시·PR마다 타입 검사, 테스트, 빌드를 돌리고, `Release`는 버전 올리기부터 DMG 빌드, 태그, GitHub Release 업로드까지 버튼 하나로 처리합니다.
 
 ## [1.0.0] - 2026-06-17
 

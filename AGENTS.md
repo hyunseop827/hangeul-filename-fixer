@@ -28,6 +28,8 @@ electron/naming.ts    파일명 규칙: NFC, 금지 문자, 예약 이름, 분�
 electron/filename.ts  복사 계획, 중복 이름, 복사, quarantine 유지, NFC 확인 (node:fs 사용)
 src/App.tsx           React 화면 전체
 scripts/dev.mjs       개발 실행기 (Vite JS API + Electron)
+scripts/release-changelog.mjs  릴리스 때 CHANGELOG 정리와 릴리스 노트 생성
+.github/workflows/    ci.yml(푸시·PR 검사), release.yml(수동 실행 배포)
 tests/*.test.ts       node:test 단위 테스트
 ```
 
@@ -95,5 +97,8 @@ tests/*.test.ts       node:test 단위 테스트
 - 커밋 메시지는 `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:` 접두어를 씁니다.
 - AI가 작성에 참여한 커밋은 `Co-Authored-By:` 트레일러로 표시합니다.
 - 이미 공개된 태그(`v1.0.0`)는 옮기지 않습니다.
-- 릴리스 순서: `package.json` 버전 올리기 → `CHANGELOG.md` 정리 → `npm run dist` → 실행 확인 → 버전·CHANGELOG 변경 커밋 → 그 커밋에 `git tag -a vX.Y.Z` → `git push`와 `git push origin vX.Y.Z` → GitHub Release에 DMG 업로드.
+- 변경 사항은 그때그때 `CHANGELOG.md`의 `[Unreleased]`에 적습니다. 비어 있으면 릴리스 워크플로가 멈춥니다.
+- 릴리스는 손으로 태그를 달지 말고 GitHub Actions `Release` 워크플로(수동 실행, patch/minor/major 선택)를 씁니다. 워크플로가 테스트 → `npm version` → `scripts/release-changelog.mjs prepare` → `npm run dist` → `chore(release): vX.Y.Z` 커밋과 annotated 태그를 `main`에 push → GitHub Release(DMG, SHA-256) 순서로 진행합니다. `dry_run`을 켜면 DMG만 Artifacts로 올립니다.
+- 릴리스 워크플로는 `main`에서만 돌고, 빌드가 끝난 뒤에야 커밋·태그를 올립니다. 중간에 실패하면 아무것도 남지 않습니다.
+- 앱 실행 확인(DMG 설치 후 열어 보기)은 자동화되어 있지 않습니다. 릴리스 후 받은 DMG로 한 번 열어 보세요.
 - 아이콘을 다시 만들 때는 원본 이미지(`build/icon.png`)를 `sips`로 크기별로 줄여 `build/AppIcon.iconset/`을 만든 뒤 `iconutil -c icns build/AppIcon.iconset -o build/icon.icns`를 실행합니다. iconset과 `build/icon-source.png`는 `.gitignore`에 들어 있어 저장소에 없습니다.

@@ -1,5 +1,7 @@
 # Hangeul Filename Fixer
 
+[![CI](https://github.com/hyunseop827/hangeul-filename-fixer/actions/workflows/ci.yml/badge.svg)](https://github.com/hyunseop827/hangeul-filename-fixer/actions/workflows/ci.yml)
+
 > [!WARNING]
 > This is a personal tool under validation. It normalizes Korean filenames on macOS to NFC, but it cannot guarantee correct display across every mail or upload flow. See [Email Attachment Notes](#email-attachment-notes).
 
@@ -182,6 +184,8 @@ Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architect
 ## Built with AI
 
 This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
+
+Releases are made by the `Release` GitHub Actions workflow (Actions → Release → Run workflow, choose patch/minor/major). It bumps the version, turns the `[Unreleased]` CHANGELOG section into the new version, builds the DMG, pushes the commit and `vX.Y.Z` tag, and publishes a GitHub Release. The `CI` workflow type-checks, tests and builds every push and pull request.
 
 ## Installation Notes
 
