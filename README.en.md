@@ -195,11 +195,11 @@ To remove this warning completely, the app needs to be signed with an Apple Deve
 
 ## License
 
-Custom non-commercial license.
+Non-commercial license.
 
-- Personal use is allowed.
-- Modification and redistribution are allowed only for non-commercial purposes.
-- Commercial use is strictly prohibited.
+- Anyone may use it free of charge, including at school or at work.
+- You may modify and share it free of charge; keep the license and copyright notice.
+- Commercial use, such as selling it, charging for it, or putting it in a paid product or service, needs permission.
 
 See [LICENSE](LICENSE).
 
