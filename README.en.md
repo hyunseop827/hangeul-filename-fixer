@@ -1,6 +1,6 @@
 # Hangeul Filename Fixer
 
-> [NOTICE/WARNING]
+> [!WARNING]
 > This is a personal tool under validation. It normalizes Korean filenames on macOS to NFC, but it cannot guarantee correct display across every mail or upload flow. See [Email Attachment Notes](#email-attachment-notes).
 
 This is the short English README. The Korean README is available here: [README.md](README.md)
@@ -28,23 +28,31 @@ The original file is never modified.
 
 ## Download and First Launch
 
-**[Download macOS DMG](https://github.com/hyunseop827/hangeul-filename-fixer/releases/download/v1.0.0/hangeul-filename-fixer-1.0.0.dmg)**
+**[Download the latest release (GitHub Releases)](https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest)**
 
-The DMG file is distributed through GitHub Releases, not committed directly to the repository.  
-The source code is in this repository, and the installer is available from the link above.
+Download `hangeul-filename-fixer-<version>.dmg` from the release page.
+The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
-This is a personal ad-hoc signed build and is not notarized by Apple.  
+**Requirements:** an Apple Silicon (M1 or later) Mac with macOS 12 Monterey or later. Intel Macs are not supported yet. The app UI is in Korean.
+
+This is a personal ad-hoc signed build and is not notarized by Apple.
 Because of that, macOS may show a warning saying Apple cannot verify that the app is free from malware.
 This warning means the app has not been notarized by Apple. It does not mean Apple found malware.
 
-Easiest way to open it:
+### Opening it the first time
 
-In the DMG, the app appears as `한글 파일명 정리기.app`.
+In the DMG, the app appears as `한글 파일명 정리기.app`. Open the DMG and move the app to Applications first.
 
-1. Open the DMG and move the app to Applications.
-2. Open the Applications folder in Finder.
-3. Control-click or right-click `한글 파일명 정리기`.
-4. Choose `Open`.
+**macOS 15 Sequoia and later**
+
+1. Open the app once. When the warning appears, click `Done`.
+2. Go to `System Settings` → `Privacy & Security`, scroll down to `Security`, and click `Open Anyway`.
+3. Confirm with your password or Touch ID. The app opens normally from then on.
+
+**macOS 12 Monterey to 14 Sonoma**
+
+Control-click (right-click) the app in Finder, choose `Open`, then click `Open` again in the warning.
+(Button and settings names differ slightly between versions. On macOS 12 you can also allow it under `System Preferences` → `Security & Privacy` → `General`.)
 
 If it still does not open, paste this into Terminal:
 
@@ -62,6 +70,8 @@ This only removes the macOS quarantine flag from the downloaded app. Run it only
 3. Preview how it may appear on Windows.
 4. Keep the Korean name as NFC or enter a custom name.
 5. Create a single NFC-normalized copy and attach that copy when sharing the file.
+
+If you keep the original name and it is already NFC and Windows-safe, the app tells you that no copy is needed.
 
 ## Email Attachment Notes
 
@@ -95,7 +105,7 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
   </tr>
   <tr>
     <td width="50%">Keep the Korean name and normalize it to NFC.</td>
-    <td width="50%">Enter a new base name. The original extension is kept.</td>
+    <td width="50%">Enter a new base name. The original extension is kept; typing it as well does not add it twice.</td>
   </tr>
   <tr>
     <td width="50%" valign="top">
@@ -116,7 +126,28 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
 When sharing the file, attach the generated copy.
 The app reads the created file back and verifies that the stored filename is NFC-normalized.
 
+> [!NOTE]
+> **Keeping the original name and saving next to the original adds ` (1)` before the extension** (e.g. `report (1).hwp`). macOS treats the decomposed (NFD) and NFC spellings as the same name, so a second file with that name cannot sit next to the original. To keep the exact name, choose another folder (for example the Desktop) with `저장 위치 변경`. The app shows this hint as well.
+
+> [!IMPORTANT]
+> **Copies with Korean names cannot be saved to USB sticks or external drives formatted exFAT, FAT32 or Mac OS Extended.** macOS reports filenames on those drives in decomposed form, so the app removes the copy and explains why (ASCII-only names are saved normally). Create the copy on the internal disk, then attach or upload it.
+
 When using Gmail with Korean filenames, attach the file from Safari rather than Chrome.
+
+### Result
+
+<p align="left">
+  <img src="images/file-name-fixed.png" alt="Copy created screen" width="620" />
+</p>
+
+## Naming Rules
+
+- Normalize the name, including the extension, to NFC.
+- Replace characters Windows does not allow (`< > : " / \ | ? *`) and control characters with `_`.
+- Trim leading and trailing spaces and a trailing dot.
+- Prefix Windows reserved names such as `CON`, `NUL`, `COM1` or `LPT1` with `_`, even with an extension (`con.tar.gz`).
+- Add ` (1)`, ` (2)` when the name is taken. Existing files are never overwritten.
+- Keep the download quarantine flag on the copy, so Gatekeeper still checks downloaded apps and scripts.
 
 ## Supported Files
 
@@ -131,21 +162,31 @@ Most regular files are supported:
 - IPYNB
 - Files without extensions
 
-Folders, `.app`, `.pages`, `.key`, and macOS package-style files are not supported yet.
+Folders, `.app` bundles, and documents saved as macOS packages (for example package-format `.pages` or `.key`) are not supported yet.
 
 ## Development
 
+Requirements: macOS, Node.js 22.12 or later, npm.
+
 | Command | Purpose | Description |
 | --- | --- | --- |
-| `npm install` | Install dependencies | Install required npm packages. |
-| `npm run dev:electron` | Run the app for development | Starts Vite and Electron together. React UI changes update almost live. |
-| `npm run build` | Check production build | Builds the React renderer and Electron main process into `dist/` and `dist-electron/`. |
-| `npm run dist` | Create DMG | Runs `build` first, then creates the macOS DMG with Electron Builder. |
+| `npm ci` | Install dependencies | Install the exact versions from `package-lock.json`. |
+| `npm run dev:electron` | Run the app for development | Starts Vite and Electron together. Changes under `src/` update live; restart after changing `electron/`. |
+| `npm test` | Run tests | Unit tests for the naming rules and the copy and verification logic. |
+| `npm run typecheck` | Type-check | Checks the renderer, Electron and test code. |
+| `npm run build` | Check production build | Type-checks, then builds the React renderer and Electron main process into `dist/` and `dist-electron/`. |
+| `npm run dist` | Create DMG | Runs `build` first, then creates `release/hangeul-filename-fixer-<version>.dmg` for the build machine's architecture. |
+
+Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
+
+## Built with AI
+
+This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
 
 ## Installation Notes
 
-The current DMG is a personal ad-hoc signed build.  
-Because it is not notarized by Apple, macOS Gatekeeper may show a warning on first launch.  
+The current DMG is a personal ad-hoc signed build.
+Because it is not notarized by Apple, macOS Gatekeeper may show a warning on first launch.
 To remove this warning completely, the app needs to be signed with an Apple Developer ID and notarized by Apple.
 
 ## License
@@ -157,3 +198,7 @@ Custom non-commercial license.
 - Commercial use is strictly prohibited.
 
 See [LICENSE](LICENSE).
+
+## Version History
+
+See [CHANGELOG.md](CHANGELOG.md) (Korean).
