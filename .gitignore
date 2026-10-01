@@ -7,14 +7,18 @@ dist-electron/
 .test-dist/
 release/
 .vite/
-.build/
-.swiftpm/
-build/AppIcon.iconset/
-build/icon-source.png
 *.dmg
 *.blockmap
 latest*.yml
 builder-debug.yml
+
+# icon sources (build/icon.icns is made from these with iconutil)
+build/AppIcon.iconset/
+build/icon-source.png
+
+# personal AI assistant settings
+.claude/settings.local.json
+CLAUDE.local.md
 
 # local custom files
 custom/
