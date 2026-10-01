@@ -1,7 +1,7 @@
 # 코드 리뷰 기록 (2026-10-01)
 
 `5044478` 기준 전체 코드를 리뷰하고 정리한 기록입니다. Claude Code(Claude Opus 5.5)의 다중 에이전트 리뷰로 진행했습니다.
-작업 방식은 [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md), 변경 목록은 [CHANGELOG.md](../CHANGELOG.md)에 있습니다.
+작업 방식은 [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md), 변경 목록은 [v1.1.0 릴리스 노트](https://github.com/hyunseop827/hangeul-filename-fixer/releases/tag/v1.1.0)에 있습니다.
 
 ## 진행 방식
 
@@ -72,7 +72,7 @@
 
 ## 사용자 결정 사항
 
-- **버전과 태그** (결정됨): 이번 변경은 `[Unreleased]`로 두고, 배포할 때 `package.json` 버전을 올리고 annotated 태그를 답니다. 기존 `v1.0.0` 태그는 `afd5876`을 가리키지만 배포된 DMG는 `5044478` 직후에 올라갔습니다. 공개된 태그는 옮기지 않습니다.
+- **버전과 태그** (완료): 이번 변경은 v1.1.0으로 배포했습니다. 이후 릴리스는 `main`에 새 버전을 올리면 CI가 태그와 릴리스를 만듭니다([AGENTS.md](../AGENTS.md)). 기존 `v1.0.0` 태그는 `afd5876`을 가리키지만 배포된 DMG는 `5044478` 직후에 올라갔습니다. 공개된 태그는 옮기지 않습니다.
 - **파일 형식 아이콘** (확인됨): `public/file-icons/`의 아이콘은 생성형 AI로 만들었습니다. 일부는 Word·Excel·PDF 등 실제 제품 아이콘과 비슷해 보이므로, 상업적으로 쓰거나 배포 범위를 넓힐 때는 직접 그린 단순한 아이콘으로 바꾸는 것을 고려하세요.
 - **LICENSE 저작권자** (미정): 지금은 "Hangeul Filename Fixer contributors"입니다. `package.json`의 author는 Hyunseop Kim으로 채웠습니다.
 - **README 스크린샷**: 실제 앱 화면을 자동 캡처한 뒤 창 테두리를 그려 만든 이미지입니다. 직접 찍은 사진을 원하면 같은 파일명으로 바꾸면 됩니다.

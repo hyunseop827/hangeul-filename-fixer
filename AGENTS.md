@@ -28,8 +28,9 @@ electron/naming.ts    파일명 규칙: NFC, 금지 문자, 예약 이름, 분�
 electron/filename.ts  복사 계획, 중복 이름, 복사, quarantine 유지, NFC 확인 (node:fs 사용)
 src/App.tsx           React 화면 전체
 scripts/dev.mjs       개발 실행기 (Vite JS API + Electron)
-scripts/release-changelog.mjs  릴리스 때 CHANGELOG 정리와 릴리스 노트 생성
-.github/workflows/    ci.yml(푸시·PR 검사), release.yml(수동 실행 배포)
+scripts/release-plan.mjs  CI가 릴리스할지 정하는 스크립트 (로컬에서 돌려 결과 미리 보기)
+.github/workflows/    ci.yml(푸시·PR 검사, main에서는 이어서 release.yml 호출), release.yml(DMG·태그·릴리스)
+.github/release-notes.md  다음(또는 현재) 버전의 릴리스 노트
 tests/*.test.ts       node:test 단위 테스트
 ```
 
@@ -87,7 +88,7 @@ tests/*.test.ts       node:test 단위 테스트
 
 ## 문서와 기록
 
-- 동작이 바뀌면 `README.md`, `README.en.md`, `CHANGELOG.md`(`[Unreleased]`)를 함께 고칩니다.
+- 동작이 바뀌면 `README.md`, `README.en.md`를 함께 고칩니다. 변경 내역은 따로 모으지 않고 릴리스 노트(GitHub Releases)에 남깁니다.
 - 화면이 바뀌면 `images/`의 README 스크린샷도 다시 찍어야 합니다.
 - 설계 결정이나 구조가 바뀌면 `docs/ARCHITECTURE.md`를 고칩니다.
 - AI로 큰 작업을 했다면 `docs/AI_DEVELOPMENT.md`의 작업 기록에 한 줄 남깁니다.
@@ -96,9 +97,29 @@ tests/*.test.ts       node:test 단위 테스트
 
 - 커밋 메시지는 `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:` 접두어를 씁니다.
 - AI가 작성에 참여한 커밋은 `Co-Authored-By:` 트레일러로 표시합니다.
-- 이미 공개된 태그(`v1.0.0`)는 옮기지 않습니다.
-- 변경 사항은 그때그때 `CHANGELOG.md`의 `[Unreleased]`에 적습니다. 비어 있으면 릴리스 워크플로가 멈춥니다.
-- 릴리스는 손으로 태그를 달지 말고 GitHub Actions `Release` 워크플로(수동 실행, patch/minor/major 선택)를 씁니다. 워크플로가 테스트 → `npm version` → `scripts/release-changelog.mjs prepare` → `npm run dist` → `chore(release): vX.Y.Z` 커밋과 annotated 태그를 `main`에 push → GitHub Release(DMG, SHA-256) 순서로 진행합니다. `dry_run`을 켜면 DMG만 Artifacts로 올립니다.
-- 릴리스 워크플로는 `main`에서만 돌고, 빌드가 끝난 뒤에야 커밋·태그를 올립니다. 중간에 실패하면 아무것도 남지 않습니다.
-- 앱 실행 확인(DMG 설치 후 열어 보기)은 자동화되어 있지 않습니다. 릴리스 후 받은 DMG로 한 번 열어 보세요.
+- 커밋, 푸시, 태그, 릴리스는 사용자가 요청할 때만 합니다. 이미 있는 릴리스 태그는 절대 다른 커밋으로 옮기지 않습니다.
+
+### 릴리스는 `main`에 올리면 자동입니다
+
+`main`에 푸시하면 CI(`ci.yml`)가 타입 검사·테스트·빌드를 하고, 통과하면 `release.yml`이 `package.json`의 버전을 봅니다.
+
+- 아직 릴리스되지 않은 버전이면: DMG 빌드 → 그 커밋에 `vX.Y.Z` 태그(메시지는 `.github/release-notes.md`) → GitHub Release 공개(노트 + 설치 안내, DMG, SHA-256) → 다시 받아 확인.
+- 이미 릴리스된 버전이면 아무것도 하지 않습니다. 단, 그 태그 뒤로 **앱 파일**이 바뀌었는데 버전을 안 올렸으면 실패합니다.
+  앱 파일: `electron/`, `src/`, `public/`, `build/`, `index.html`, `package.json`, `package-lock.json`, `vite.config.ts`, `tsconfig.json`, `tsconfig.electron.json` (`scripts/release-plan.mjs`의 `appInputs`)
+- 봇은 `main`에 커밋하지 않습니다. 태그만 만듭니다.
+- 중간에 실패해서 태그나 초안 릴리스가 남으면, 그 CI 실행에서 `Re-run failed jobs`로 마칩니다.
+
+### 앱을 고친 변경을 넘기기 전에
+
+1. `git fetch --tags origin`으로 CI가 만든 태그를 받아 온 뒤 버전을 고릅니다. 지금 버전이 이미 태그돼 있으면 다음 버전으로 올립니다(버그 수정은 patch, 기능 추가는 minor).
+   `npm version patch --no-git-tag-version`처럼 올리면 `package.json`과 `package-lock.json`이 함께 바뀝니다. 로컬에서 이미 새 버전을 준비 중이면 또 올리지 말고 노트만 고칩니다.
+2. `.github/release-notes.md`의 첫 줄을 `# vX.Y.Z`(앱 버전과 같게)로 바꾸고, 그 아래에 사용자가 알아야 할 변화를 3~5줄로 적습니다. 사용자가 커밋 전에 고칠 수 있습니다.
+3. `npm run typecheck && npm test && npm run build`를 돌리고, `node scripts/release-plan.mjs`로 CI가 무엇을 할지 확인합니다(`gh` 필요).
+   워크플로를 고쳤다면 `actionlint .github/workflows/*.yml`도 돌립니다.
+4. 문서만 바꾼 변경은 버전을 올리지 않습니다.
+
+릴리스 뒤에는 받은 DMG로 앱을 한 번 열어 봅니다. 이 확인은 자동화되어 있지 않습니다.
+
+## 아이콘
+
 - 아이콘을 다시 만들 때는 원본 이미지(`build/icon.png`)를 `sips`로 크기별로 줄여 `build/AppIcon.iconset/`을 만든 뒤 `iconutil -c icns build/AppIcon.iconset -o build/icon.icns`를 실행합니다. iconset과 `build/icon-source.png`는 `.gitignore`에 들어 있어 저장소에 없습니다.

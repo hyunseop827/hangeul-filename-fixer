@@ -1,105 +1,131 @@
-# Actions 탭 → Release → Run workflow 로 실행합니다.
-# 버전을 올리고 CHANGELOG의 [Unreleased]를 그 버전으로 바꾼 뒤, DMG를 빌드해서
-# 커밋·태그를 main에 올리고 GitHub Release를 만듭니다.
-# "시험 실행"을 켜면 DMG만 만들어 워크플로 결과물(Artifacts)로 올리고 아무것도 커밋하거나 배포하지 않습니다.
+# Releases the version in package.json. Called by ci.yml after the checks pass on a push to main; nothing else
+# starts it, so every release comes from a tested commit on main and a person never pushes a tag.
+#
+# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg (+ .sha256), tags the commit v<version>
+#   with .github/release-notes.md as the message, publishes the GitHub release with those notes and install notes,
+#   attaches the dmg and its checksum, then downloads both back and checks them.
+# - Version already released: nothing to do, unless the app changed since its tag without a new version, which fails.
+# - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind).
+# scripts/release-plan.mjs makes these decisions; run it locally to see what CI will do.
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: "올릴 버전 (patch 1.0.0→1.0.1, minor →1.1.0, major →2.0.0)"
-        type: choice
-        options: [patch, minor, major]
-        default: minor
-      dry_run:
-        description: "시험 실행 (커밋·태그·릴리스 없이 DMG만 만들기)"
-        type: boolean
-        default: false
+  workflow_call:
 
 permissions:
-  contents: write
+  contents: read
 
-concurrency:
-  group: release
-  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    name: DMG와 GitHub 릴리스
     runs-on: macos-latest
     timeout-minutes: 30
+    permissions:
+      contents: write # version tag, gh release create / upload / edit
+    # One release at a time; a newer push waits instead of cancelling a release half way.
+    concurrency:
+      group: hangeul-filename-fixer-release
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - name: 체크아웃 (검사한 커밋, 태그 포함)
+        uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
 
-      # No dependency cache here: a release build should not restore caches other workflows wrote.
+      # No dependency cache: a release build should not restore caches other workflows wrote.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-
-      - name: Bump version and CHANGELOG
-        id: version
+      - name: 버전과 릴리스 상태 확인
+        id: plan
         env:
-          BUMP: ${{ inputs.bump }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-plan.mjs
+
+      - name: 의존성 설치
+        if: steps.plan.outputs.publish == 'true'
+        run: npm ci
+
+      - name: DMG 만들기
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
         run: |
-          npm version "$BUMP" --no-git-tag-version
-          VERSION="$(node -p "require('./package.json').version")"
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::error::Tag v$VERSION already exists."
+          npm run dist
+          cd release
+          shasum -a 256 "hangeul-filename-fixer-$VERSION.dmg" > "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          cat "hangeul-filename-fixer-$VERSION.dmg.sha256"
+
+      # Only after the dmg is built, so a failed build never leaves a tag behind. The token is handed to this one
+      # git command (the checkout keeps no credentials), the way actions/checkout itself authenticates.
+      - name: 버전 태그 만들기
+        if: steps.plan.outputs.publish == 'true' && steps.plan.outputs.tag_exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            tag -a "$TAG" --cleanup=verbatim -F .github/release-notes.md "$GITHUB_SHA"
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin "refs/tags/$TAG"
+
+      - name: GitHub 릴리스 올리기
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          RELEASE_STATE: ${{ steps.plan.outputs.release_state }}
+        run: |
+          dmg="release/hangeul-filename-fixer-$VERSION.dmg"
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            cat "$RUNNER_TEMP/release-body.md"
+            echo
+            echo "## 설치"
+            echo
+            echo "\`${dmg##*/}\`을 받아 열고 앱을 \`응용 프로그램\` 폴더로 옮기세요. Apple Silicon(M1 이상) Mac, macOS 12 이상."
+            echo
+            echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 \`시스템 설정\` → \`개인정보 보호 및 보안\` → \`그래도 열기\`를 누르세요. 자세한 방법은 [README](https://github.com/$GH_REPO#처음-여는-방법)에 있습니다."
+            echo
+            echo "SHA-256 (\`${dmg##*/}\`): \`$(cut -d' ' -f1 < "$dmg.sha256")\`"
+          } > "$notes"
+          title="한글 파일명 정리기 $TAG"
+          if [[ "$RELEASE_STATE" == none ]]; then
+            gh release create "$TAG" --draft --verify-tag --title "$title" --notes-file "$notes"
+          fi
+          is_draft="$(gh release view "$TAG" --json isDraft --jq '.isDraft')"
+          if [[ "$is_draft" != true ]]; then
+            echo "::error::$TAG 릴리스가 초안이 아닙니다 (isDraft: '$is_draft'). 이미 공개된 릴리스는 건드리지 않습니다."
             exit 1
           fi
-          node scripts/release-changelog.mjs prepare "$VERSION" "$(TZ=Asia/Seoul date +%F)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          gh release upload "$TAG" "$dmg" "$dmg.sha256" --clobber
+          gh release edit "$TAG" --title "$title" --notes-file "$notes" --draft=false --prerelease=false --latest
 
-      - name: Build DMG
-        run: npm run dist
-
-      - name: Checksum
+      - name: 올린 파일 다시 받아 확인
+        if: steps.plan.outputs.verify == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          cd release
-          shasum -a 256 "hangeul-filename-fixer-$VERSION.dmg" | tee "hangeul-filename-fixer-$VERSION.dmg.sha256"
-
-      - name: Upload DMG (dry run)
-        if: inputs.dry_run
-        uses: actions/upload-artifact@v7
-        with:
-          name: hangeul-filename-fixer-${{ steps.version.outputs.version }}-dry-run
-          path: |
-            release/hangeul-filename-fixer-${{ steps.version.outputs.version }}.dmg
-            release/hangeul-filename-fixer-${{ steps.version.outputs.version }}.dmg.sha256
-            CHANGELOG.md
-          retention-days: 7
-
-      - name: Commit, tag and push
-        if: ${{ !inputs.dry_run }}
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json CHANGELOG.md
-          git commit -m "chore(release): v$VERSION"
-          git tag -a "v$VERSION" -m "v$VERSION"
-          git push --atomic origin HEAD:main "v$VERSION"
-
-      - name: Create GitHub release
-        if: ${{ !inputs.dry_run }}
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ steps.plan.outputs.version }}
         run: |
-          node scripts/release-changelog.mjs notes "$VERSION" > release-notes.md
-          gh release create "v$VERSION" \
-            "release/hangeul-filename-fixer-$VERSION.dmg" \
-            "release/hangeul-filename-fixer-$VERSION.dmg.sha256" \
-            --title "v$VERSION" \
-            --notes-file release-notes.md \
-            --verify-tag
+          dir="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-verify.XXXXXX")"
+          trap 'rm -rf -- "$dir"' EXIT
+          cd "$dir"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "hangeul-filename-fixer-$VERSION.dmg" \
+            --pattern "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          shasum -a 256 -c "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          hdiutil verify -quiet "hangeul-filename-fixer-$VERSION.dmg"
+          echo "OK  $TAG"

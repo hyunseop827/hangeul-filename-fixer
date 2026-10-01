@@ -185,7 +185,7 @@ Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architect
 
 This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
 
-Releases are made by the `Release` GitHub Actions workflow (Actions → Release → Run workflow, choose patch/minor/major). It bumps the version, turns the `[Unreleased]` CHANGELOG section into the new version, builds the DMG, pushes the commit and `vX.Y.Z` tag, and publishes a GitHub Release. The `CI` workflow type-checks, tests and builds every push and pull request.
+When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The `CI` workflow also type-checks, tests and builds every pull request.
 
 ## Installation Notes
 
@@ -205,4 +205,4 @@ See [LICENSE](LICENSE).
 
 ## Version History
 
-See [CHANGELOG.md](CHANGELOG.md) (Korean).
+See [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases).

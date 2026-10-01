@@ -49,7 +49,7 @@
 | [CLAUDE.md](../CLAUDE.md) | Claude Code용 진입점 (AGENTS.md를 불러옴) |
 | [docs/ARCHITECTURE.md](ARCHITECTURE.md) | 문제 배경, 처리 흐름, 모듈 경계, IPC 계약, 설계 결정 |
 | [docs/CODE_REVIEW_2026-10-01.md](CODE_REVIEW_2026-10-01.md) | 리뷰 결과, 반영하지 않은 항목과 이유, 사용자 결정 사항 |
-| [CHANGELOG.md](../CHANGELOG.md) | 버전별 변경 내역 |
+| [.github/release-notes.md](../.github/release-notes.md) | 다음 버전의 릴리스 노트 (지난 내역은 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)) |
 
 ## 한계
 
