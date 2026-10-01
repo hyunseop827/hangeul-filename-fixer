@@ -1,0 +1,3 @@
+/* Every text the app shows, keyed by the Korean text itself ("한국어 문구" = "한국어 문구";).
+   Korean is the only language, so each value repeats its key; scripts/build-app.sh copies this file into the bundle's
+   ko.lproj. The Core looks its messages up here through the main bundle, so the unit tests (no bundle) see the key. */

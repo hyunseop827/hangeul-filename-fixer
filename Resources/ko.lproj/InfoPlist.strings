@@ -1,0 +1,3 @@
+/* The app's name as Finder, the Dock and the menu bar show it (Resources/Info.plist has the same values). */
+"CFBundleName" = "한글 파일명 정리기";
+"CFBundleDisplayName" = "한글 파일명 정리기";

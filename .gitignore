@@ -12,6 +12,18 @@ release/
 latest*.yml
 builder-debug.yml
 
+# SwiftPM / Xcode build output
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+
+# App bundle and disk image made by scripts/build-app.sh and scripts/make-dmg.sh: build/한글 파일명 정리기.app,
+# build/release/, build/hangeul-filename-fixer-X.Y.Z.dmg and its checksum. (A rule only hides untracked files: the
+# Electron packaging files still tracked in build/ stay tracked until they are deleted.)
+/build/
+*.dmg.sha256
+
 # icon sources (build/icon.icns is made from these with iconutil)
 build/AppIcon.iconset/
 build/icon-source.png
