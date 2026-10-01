@@ -2,8 +2,9 @@
   --bg: #f8fafc;
   --card: #ffffff;
   --primary: #4f46e5;
-  --success: #16a34a;
+  --success: #15803d;
   --warning: #f59e0b;
+  --error: #b91c1c;
   --text: #111827;
   --muted: #6b7280;
   --line: #e5e7eb;
@@ -81,6 +82,11 @@ input:disabled {
     background 160ms ease;
 }
 
+/* Children must not be drag targets, or dragleave fires when the pointer moves over them. */
+.drop-zone > * {
+  pointer-events: none;
+}
+
 .drop-zone.is-dragging {
   border-color: var(--primary);
   background: var(--primary-soft);
@@ -117,7 +123,7 @@ input:disabled {
 }
 
 .detail-screen {
-  padding: 28px 18px 16px;
+  padding: 18px 18px 16px;
 }
 
 .back-button {
@@ -134,8 +140,6 @@ input:disabled {
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
 }
 
 .output-label {
@@ -248,7 +252,7 @@ input:disabled {
 }
 
 .flow-arrow {
-  margin: 5px 0;
+  margin: 3px 0;
   color: var(--muted);
   font-size: 18px;
   line-height: 1;
@@ -304,6 +308,7 @@ input:disabled {
 
 .result-box {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
   margin-bottom: 10px;
   padding: 10px;
@@ -316,6 +321,24 @@ input:disabled {
 .result-box small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.result-box small {
+  overflow-wrap: anywhere;
+}
+
+/* Instructions in place of a file name may wrap instead of being cut off. */
+.result-box strong.is-message {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.result-hint {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .actions {
@@ -351,6 +374,10 @@ input:disabled {
   color: var(--text);
 }
 
+.finder-button {
+  flex-shrink: 0;
+}
+
 .result-actions {
   display: flex;
   min-height: 34px;
@@ -369,7 +396,7 @@ input:disabled {
 }
 
 .status.error {
-  color: var(--warning);
+  color: var(--error);
 }
 
 .status.info {

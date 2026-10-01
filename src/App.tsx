@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { PlanInput, PlanResult } from "../electron/filename";
+import { notRegularFileMessage, type FileCopyPlan, type PlanInput } from "../electron/api";
+import { decomposedDisplayName, splitFileName, windowsSafeFileName } from "../electron/naming";
 
 type Status = {
   tone: "success" | "error" | "info";
@@ -8,109 +9,57 @@ type Status = {
 
 type NameMode = "keep" | "rename";
 
-const emptyPreview: PlanResult = { plans: [], rejectedPaths: [] };
+type FileIconType = {
+  extensions: string[];
+  label: string;
+  className: string;
+  title: string;
+  svg: string;
+};
 
-const forbiddenCharacters = /[<>:"/\\|?*\u0000-\u001f]/g;
-const reservedDeviceNames = new Set([
-  "CON",
-  "PRN",
-  "AUX",
-  "NUL",
-  ...Array.from({ length: 9 }, (_, index) => `COM${index + 1}`),
-  ...Array.from({ length: 9 }, (_, index) => `LPT${index + 1}`)
-]);
+const fileIconTypes: FileIconType[] = [
+  { extensions: ["doc", "docx"], label: "DOC", className: "word", title: "Word 문서", svg: "word.svg" },
+  { extensions: ["hwp", "hwpx"], label: "HWP", className: "hwp", title: "한글 문서", svg: "hwp.svg" },
+  { extensions: ["pdf"], label: "PDF", className: "pdf", title: "PDF 문서", svg: "pdf.svg" },
+  { extensions: ["ppt", "pptx"], label: "PPT", className: "ppt", title: "PowerPoint 문서", svg: "powerpoint.svg" },
+  { extensions: ["xls", "xlsx", "csv"], label: "XLS", className: "sheet", title: "스프레드시트", svg: "excel.svg" },
+  { extensions: ["txt", "md", "rtf"], label: "TXT", className: "text", title: "텍스트 문서", svg: "text.svg" },
+  {
+    extensions: ["png", "jpg", "jpeg", "gif", "webp", "heic", "svg"],
+    label: "IMG",
+    className: "image",
+    title: "이미지 파일",
+    svg: "image.svg"
+  },
+  { extensions: ["zip", "rar", "7z", "tar", "gz"], label: "ZIP", className: "archive", title: "압축 파일", svg: "archive.svg" }
+];
 
-const choseongPreview = [
-  "ㄱ",
-  "ㄲ",
-  "ㄴ",
-  "ㄷ",
-  "ㄸ",
-  "ㄹ",
-  "ㅁ",
-  "ㅂ",
-  "ㅃ",
-  "ㅅ",
-  "ㅆ",
-  "ㅇ",
-  "ㅈ",
-  "ㅉ",
-  "ㅊ",
-  "ㅋ",
-  "ㅌ",
-  "ㅍ",
-  "ㅎ"
-];
-const jungseongPreview = [
-  "ㅏ",
-  "ㅐ",
-  "ㅑ",
-  "ㅒ",
-  "ㅓ",
-  "ㅔ",
-  "ㅕ",
-  "ㅖ",
-  "ㅗ",
-  "ㅘ",
-  "ㅙ",
-  "ㅚ",
-  "ㅛ",
-  "ㅜ",
-  "ㅝ",
-  "ㅞ",
-  "ㅟ",
-  "ㅠ",
-  "ㅡ",
-  "ㅢ",
-  "ㅣ"
-];
-const jongseongPreview = [
-  "ㄱ",
-  "ㄲ",
-  "ㄳ",
-  "ㄴ",
-  "ㄵ",
-  "ㄶ",
-  "ㄷ",
-  "ㄹ",
-  "ㄺ",
-  "ㄻ",
-  "ㄼ",
-  "ㄽ",
-  "ㄾ",
-  "ㄿ",
-  "ㅀ",
-  "ㅁ",
-  "ㅂ",
-  "ㅄ",
-  "ㅅ",
-  "ㅆ",
-  "ㅇ",
-  "ㅈ",
-  "ㅊ",
-  "ㅋ",
-  "ㅌ",
-  "ㅍ",
-  "ㅎ"
-];
+const genericFileIcon: FileIconType = {
+  extensions: [],
+  label: "FILE",
+  className: "generic",
+  title: "일반 파일",
+  svg: "generic.svg"
+};
 
 function App() {
   const [sourcePath, setSourcePath] = useState<string | null>(null);
   const [baseName, setBaseName] = useState("");
   const [nameMode, setNameMode] = useState<NameMode>("keep");
   const [outputDirectory, setOutputDirectory] = useState<string | null>(null);
-  const [preview, setPreview] = useState<PlanResult>(emptyPreview);
-  const [createdPath, setCreatedPath] = useState<string | null>(null);
+  // undefined while the preview for a new file is loading; null when the source is not a regular file.
+  const [plan, setPlan] = useState<FileCopyPlan | null | undefined>(undefined);
+  const [previewVersion, setPreviewVersion] = useState(0);
+  const [createdPlan, setCreatedPlan] = useState<FileCopyPlan | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const sourceName = sourcePath ? baseNameFromPath(sourcePath) : "";
+  // Prefer the name stored on disk: a dropped file's path is always decomposed (NFD).
+  const sourceName = (createdPlan ?? plan)?.sourceName ?? (sourcePath ? baseNameFromPath(sourcePath) : "");
   const sourceParts = splitFileName(sourceName);
-  const sourceSafeStem = sourceName ? windowsSafeStem(sourceParts.stem) : "";
-  const windowsCompatibleName = sourceName
-    ? `${sourceSafeStem}${sourceParts.extension}`
-    : "";
-  const windowsOriginalName = sourceName ? windowsOriginalDisplayPreview(sourceName) : "";
+  const windowsCompatibleName = sourceName ? windowsSafeFileName(sourceParts.stem, sourceParts.extension) : "";
+  const fileIcon = getFileIcon(sourceName);
   const customNameMissing = nameMode === "rename" && baseName.trim().length === 0;
   const effectiveBaseName = nameMode === "keep" ? "" : baseName;
 
@@ -120,53 +69,44 @@ function App() {
     }
 
     return {
-      sourcePaths: [sourcePath],
+      sourcePath,
       outputDirectory,
       baseName: effectiveBaseName
     };
   }, [effectiveBaseName, outputDirectory, sourcePath]);
 
   useEffect(() => {
-    let isCancelled = false;
-
-    async function refreshPreview() {
-      if (!input) {
-        setPreview(emptyPreview);
-        return;
-      }
-
-      const nextPreview = await window.hangeulFilenameFixer.preview(input);
-      if (!isCancelled) {
-        setPreview(nextPreview);
-      }
+    if (!input) {
+      return undefined;
     }
 
-    void refreshPreview();
+    let isCancelled = false;
+    void window.hangeulFilenameFixer.preview(input).then((nextPlan) => {
+      if (!isCancelled) {
+        setPlan(nextPlan);
+      }
+    });
 
     return () => {
       isCancelled = true;
     };
-  }, [input]);
+  }, [input, previewVersion]);
 
-  const currentPlan = preview.plans[0] ?? null;
-  const resultName = customNameMissing ? "" : currentPlan?.destinationName ?? "";
-  const canConvert = Boolean(currentPlan && outputDirectory && !customNameMissing);
+  const canConvert = Boolean(input && plan) && !customNameMissing && !isConverting && !createdPlan;
 
   async function selectFile() {
-    const paths = await window.hangeulFilenameFixer.selectFiles();
-    setFile(paths[0]);
+    setFile(await window.hangeulFilenameFixer.selectFile());
   }
 
   async function selectOutputDirectory() {
-    const directory = await window.hangeulFilenameFixer.selectOutputDirectory();
+    const directory = await window.hangeulFilenameFixer.selectOutputDirectory(outputDirectory ?? undefined);
     if (directory) {
       setOutputDirectory(directory);
-      setCreatedPath(null);
-      setStatus(null);
+      resetResult();
     }
   }
 
-  function setFile(nextPath: string | undefined) {
+  function setFile(nextPath: string | null) {
     if (!nextPath) {
       return;
     }
@@ -175,7 +115,13 @@ function App() {
     setOutputDirectory(directoryFromPath(nextPath));
     setBaseName("");
     setNameMode("keep");
-    setCreatedPath(null);
+    setPlan(undefined);
+    setPreviewVersion((version) => version + 1);
+    resetResult();
+  }
+
+  function resetResult() {
+    setCreatedPlan(null);
     setStatus(null);
   }
 
@@ -188,55 +134,76 @@ function App() {
       return;
     }
 
-    setFile(window.hangeulFilenameFixer.getPathForFile(firstFile));
+    setFile(window.hangeulFilenameFixer.getPathForFile(firstFile) || null);
 
     if (event.dataTransfer.files.length > 1) {
       setStatus({ tone: "info", message: "파일 하나만 처리합니다. 첫 번째 파일만 선택했습니다." });
     }
   }
 
-  function useOriginalName() {
-    setNameMode("keep");
-    setCreatedPath(null);
-    setStatus(null);
-  }
-
-  function useRenameMode() {
-    setNameMode("rename");
-    setCreatedPath(null);
-    setStatus(null);
+  function changeNameMode(mode: NameMode) {
+    setNameMode(mode);
+    resetResult();
   }
 
   async function convertFile() {
-    if (!input || customNameMissing) {
+    if (!input || !canConvert) {
       return;
     }
 
+    setIsConverting(true);
+    setStatus({ tone: "info", message: "사본을 만드는 중입니다…" });
+
     try {
-      const result = await window.hangeulFilenameFixer.convert(input);
-      const destination = result.plans[0]?.destinationPath ?? null;
-      setPreview(result);
-      setCreatedPath(destination);
-      setStatus({
-        tone: "success",
-        message: "완료되었습니다. NFC 파일명 사본을 확인했습니다."
-      });
-    } catch {
-      setCreatedPath(null);
-      setStatus({
-        tone: "error",
-        message: "파일명을 NFC로 보존하지 못했습니다. 다른 저장 위치를 선택하세요."
-      });
+      setCreatedPlan(await window.hangeulFilenameFixer.convert(input));
+      setStatus({ tone: "success", message: "완료되었습니다. 저장된 파일명이 NFC인지 확인했습니다." });
+    } catch (error) {
+      setStatus({ tone: "error", message: ipcErrorMessage(error) });
+    } finally {
+      setIsConverting(false);
+      // The new copy now takes its name, so the next preview needs a fresh " (n)".
+      setPreviewVersion((version) => version + 1);
     }
   }
 
   function clearFile() {
     setSourcePath(null);
     setOutputDirectory(null);
-    setPreview(emptyPreview);
-    setCreatedPath(null);
-    setStatus(null);
+    resetResult();
   }
+
+  function resultName(): string {
+    if (createdPlan) {
+      return createdPlan.destinationName;
+    }
+    if (customNameMissing) {
+      return "새 파일명을 입력하세요.";
+    }
+    if (plan === undefined) {
+      return "저장 위치를 확인하는 중입니다.";
+    }
+    if (plan === null) {
+      return notRegularFileMessage;
+    }
+    return plan.destinationName;
+  }
+
+  function resultHint(): string | null {
+    if (createdPlan || customNameMissing || !plan) {
+      return null;
+    }
+    if (nameMode === "keep" && windowsCompatibleName === sourceName) {
+      return "이미 Windows 호환 이름이라 사본을 만들지 않아도 됩니다.";
+    }
+    if (plan.hasNumberSuffix) {
+      return "같은 이름의 파일(원본 포함)이 있어 번호가 붙습니다. 원래 이름 그대로 받으려면 저장 위치를 변경하세요.";
+    }
+    return null;
+  }
+
+  const shownName = resultName();
+  const isShowingFileName = Boolean(createdPlan || (plan && !customNameMissing));
+  const hint = resultHint();
 
   return (
     <main className="app-frame">
@@ -252,34 +219,35 @@ function App() {
         </>
       ) : (
         <section className="detail-screen">
-          <button type="button" className="back-button" onClick={clearFile}>
+          <button type="button" className="back-button" onClick={clearFile} disabled={isConverting}>
             ← 다른 파일 선택
           </button>
 
           <div className="section-label">선택된 파일</div>
 
           <FilenameCard
-            fileName={sourceName}
+            icon={fileIcon}
             label="macOS Finder에서 보이는 이름"
-            name={sourceName}
-            description="MacOS 현재 원본"
+            // Finder shows a ":" in the stored name as "/".
+            name={sourceName.replaceAll(":", "/")}
+            description="macOS 현재 원본"
           />
 
-          <div className="flow-arrow">↓</div>
+          <div className="flow-arrow" aria-hidden="true">
+            ↓
+          </div>
+
+          <FilenameCard icon={fileIcon} label="Windows에서 보일 수 있는 이름" name={decomposedDisplayName(sourceName)} />
+
+          <div className="flow-arrow" aria-hidden="true">
+            ↓
+          </div>
 
           <FilenameCard
-            fileName={sourceName}
-            label="Windows에서 보이는 이름"
-            name={windowsOriginalName}
-          />
-
-          <div className="flow-arrow">↓</div>
-
-          <FilenameCard
-            fileName={windowsCompatibleName}
+            icon={fileIcon}
             label="변환 후 Windows 호환 이름"
             name={windowsCompatibleName}
-            description="변환후 Windows 예상"
+            description="변환 후 Windows 예상"
           />
 
           <div className="section-label output-label">출력 이름</div>
@@ -287,14 +255,18 @@ function App() {
             <button
               type="button"
               className={nameMode === "keep" ? "active" : ""}
-              onClick={useOriginalName}
+              aria-pressed={nameMode === "keep"}
+              disabled={isConverting}
+              onClick={() => changeNameMode("keep")}
             >
               기존 이름 유지
             </button>
             <button
               type="button"
               className={nameMode === "rename" ? "active" : ""}
-              onClick={useRenameMode}
+              aria-pressed={nameMode === "rename"}
+              disabled={isConverting}
+              onClick={() => changeNameMode("rename")}
             >
               이름 바꾸기
             </button>
@@ -303,25 +275,34 @@ function App() {
           <label className="rename-field">
             <span>새 파일명</span>
             <input
-              value={baseName}
+              value={nameMode === "rename" ? baseName : ""}
               onChange={(event) => {
                 setBaseName(event.target.value);
-                setCreatedPath(null);
+                resetResult();
               }}
-              disabled={nameMode !== "rename"}
+              disabled={nameMode !== "rename" || isConverting}
               placeholder="확장자명을 제외하고 입력해주세요"
+              spellCheck={false}
             />
           </label>
 
           <div className="section-label">결과</div>
           <div className="result-box">
-            <span>생성될 사본 이름</span>
-            <strong>{resultName || "저장 위치를 확인하는 중입니다."}</strong>
-            <small>{outputDirectory ?? "원본 폴더"}</small>
+            <span>{createdPlan ? "생성된 사본" : "생성될 사본 이름"}</span>
+            <strong className={isShowingFileName ? undefined : "is-message"} title={shownName}>
+              {shownName}
+            </strong>
+            <small title={outputDirectory ?? undefined}>{outputDirectory}</small>
+            {hint ? <p className="result-hint">{hint}</p> : null}
           </div>
 
           <div className="actions">
-            <button type="button" className="secondary-action" onClick={selectOutputDirectory}>
+            <button
+              type="button"
+              className="secondary-action"
+              onClick={selectOutputDirectory}
+              disabled={isConverting}
+            >
               저장 위치 변경
             </button>
             <button type="button" className="primary-action" disabled={!canConvert} onClick={convertFile}>
@@ -330,18 +311,18 @@ function App() {
           </div>
 
           <div className="result-actions">
-            {status ? (
-              <p className={`status ${status?.tone ?? "info"}`}>
-                {status.message}
-              </p>
-            ) : (
-              <span aria-hidden="true" />
-            )}
+            <p className={status ? `status ${status.tone}` : "status"} role="status">
+              {status?.message}
+            </p>
             <button
               type="button"
               className="finder-button"
-              disabled={!createdPath}
-              onClick={() => createdPath && void window.hangeulFilenameFixer.reveal([createdPath])}
+              disabled={!createdPlan}
+              onClick={() => {
+                if (createdPlan) {
+                  void window.hangeulFilenameFixer.reveal(createdPlan.destinationPath);
+                }
+              }}
             >
               Finder에서 보기
             </button>
@@ -393,196 +374,57 @@ function DropZone({
 }
 
 function FilenameCard({
-  fileName,
+  icon,
   label,
   name,
   description
 }: {
-  fileName: string;
+  icon: FileIconType;
   label: string;
   name: string;
   description?: string;
 }) {
-  const fileIcon = getFileIcon(fileName);
-
   return (
     <div className="filename-card">
-      <FileIcon fileIcon={fileIcon} />
+      <FileIcon icon={icon} />
       <div className="filename-content">
         <div className="filename-meta">
           <span>{label}</span>
         </div>
-        <strong>{name}</strong>
+        <strong title={name}>{name}</strong>
         {description ? <small>{description}</small> : null}
       </div>
     </div>
   );
 }
 
-function FileIcon({
-  fileIcon
-}: {
-  fileIcon: {
-    label: string;
-    className: string;
-    title: string;
-    src?: string;
-  };
-}) {
+function FileIcon({ icon }: { icon: FileIconType }) {
   const [imageFailed, setImageFailed] = useState(false);
-  const showImage = fileIcon.src && !imageFailed;
 
   return (
-    <div className={`file-icon ${fileIcon.className}`} title={fileIcon.title} aria-hidden="true">
-      {showImage ? <img src={fileIcon.src} alt="" onError={() => setImageFailed(true)} /> : fileIcon.label}
+    <div className={`file-icon ${icon.className}`} title={icon.title} aria-hidden="true">
+      {imageFailed ? icon.label : <img src={`./file-icons/${icon.svg}`} alt="" onError={() => setImageFailed(true)} />}
     </div>
   );
 }
 
-function getFileIcon(fileName: string) {
+function getFileIcon(fileName: string): FileIconType {
   const extension = splitFileName(fileName).extension.slice(1).toLowerCase();
-
-  if (["doc", "docx"].includes(extension)) {
-    return {
-      label: "DOC",
-      className: "word",
-      title: "Word 문서",
-      src: fileIconPath("word.svg")
-    };
-  }
-  if (["hwp", "hwpx"].includes(extension)) {
-    return {
-      label: "HWP",
-      className: "hwp",
-      title: "한글 문서",
-      src: fileIconPath("hwp.svg")
-    };
-  }
-  if (extension === "pdf") {
-    return {
-      label: "PDF",
-      className: "pdf",
-      title: "PDF 문서",
-      src: fileIconPath("pdf.svg")
-    };
-  }
-  if (["ppt", "pptx"].includes(extension)) {
-    return {
-      label: "PPT",
-      className: "ppt",
-      title: "PowerPoint 문서",
-      src: fileIconPath("powerpoint.svg")
-    };
-  }
-  if (["xls", "xlsx", "csv"].includes(extension)) {
-    return {
-      label: "XLS",
-      className: "sheet",
-      title: "스프레드시트",
-      src: fileIconPath("excel.svg")
-    };
-  }
-  if (["txt", "md", "rtf"].includes(extension)) {
-    return {
-      label: "TXT",
-      className: "text",
-      title: "텍스트 문서",
-      src: fileIconPath("text.svg")
-    };
-  }
-  if (["png", "jpg", "jpeg", "gif", "webp", "heic", "svg"].includes(extension)) {
-    return {
-      label: "IMG",
-      className: "image",
-      title: "이미지 파일",
-      src: fileIconPath("image.svg")
-    };
-  }
-  if (["zip", "rar", "7z", "tar", "gz"].includes(extension)) {
-    return {
-      label: "ZIP",
-      className: "archive",
-      title: "압축 파일",
-      src: fileIconPath("archive.svg")
-    };
-  }
-  return {
-    label: "FILE",
-    className: "generic",
-    title: "일반 파일",
-    src: fileIconPath("generic.svg")
-  };
+  return fileIconTypes.find((type) => type.extensions.includes(extension)) ?? genericFileIcon;
 }
 
-function fileIconPath(fileName: string) {
-  return `./file-icons/${fileName}`;
-}
-
-function windowsSafeStem(rawValue: string): string {
-  let result = rawValue
-    .normalize("NFC")
-    .replace(forbiddenCharacters, "_")
-    .trim();
-
-  while (result.endsWith(".") || result.endsWith(" ")) {
-    result = result.slice(0, -1);
-  }
-
-  if (result.length === 0) {
-    result = "파일";
-  }
-
-  if (reservedDeviceNames.has(result.toUpperCase())) {
-    result = `_${result}`;
-  }
-
-  return result.normalize("NFC");
-}
-
-function windowsOriginalDisplayPreview(value: string): string {
-  let result = "";
-
-  for (const character of value) {
-    const codePoint = character.codePointAt(0) ?? 0;
-
-    if (codePoint >= 0x1100 && codePoint <= 0x1112) {
-      result += choseongPreview[codePoint - 0x1100];
-      continue;
-    }
-    if (codePoint >= 0x1161 && codePoint <= 0x1175) {
-      result += jungseongPreview[codePoint - 0x1161];
-      continue;
-    }
-    if (codePoint >= 0x11a8 && codePoint <= 0x11c2) {
-      result += jongseongPreview[codePoint - 0x11a8];
-      continue;
-    }
-
-    result += character;
-  }
-
-  return result;
-}
-
-function splitFileName(fileName: string) {
-  const dotIndex = fileName.lastIndexOf(".");
-  if (dotIndex <= 0) {
-    return { stem: fileName, extension: "" };
-  }
-
-  return {
-    stem: fileName.slice(0, dotIndex),
-    extension: fileName.slice(dotIndex)
-  };
+// Electron wraps main-process errors as "Error invoking remote method 'x': Error: <message>".
+function ipcErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, "");
 }
 
 function baseNameFromPath(filePath: string) {
-  return filePath.split(/[\\/]/).at(-1) ?? filePath;
+  return filePath.slice(filePath.lastIndexOf("/") + 1);
 }
 
 function directoryFromPath(filePath: string) {
-  const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
-  return separatorIndex >= 0 ? filePath.slice(0, separatorIndex) : "";
+  return filePath.slice(0, filePath.lastIndexOf("/")) || "/";
 }
 
 export default App;

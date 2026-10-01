@@ -1,16 +1,21 @@
 {
   "name": "hangeul-filename-fixer",
   "version": "1.0.0",
+  "private": true,
   "description": "Hangeul Filename Fixer / 한글 파일명 정리기",
+  "productName": "Hangeul Filename Fixer",
+  "author": "Hyunseop Kim",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": "github:hyunseop827/hangeul-filename-fixer",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "dev:electron": "npm run build:main && concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && ELECTRON_RENDERER_URL=http://127.0.0.1:5173 electron .\"",
-    "build:main": "tsc -p tsconfig.electron.json",
+    "dev:electron": "npm run build:main && node scripts/dev.mjs",
+    "build:main": "rm -rf dist-electron && tsc -p tsconfig.electron.json",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:renderer",
-    "dist": "npm run build && electron-builder --mac dmg",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json"
+    "build": "tsc --noEmit -p tsconfig.json && npm run build:main && npm run build:renderer",
+    "dist": "npm run build && electron-builder --mac --publish never",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node --test \".test-dist/tests/*.test.js\""
   },
   "keywords": [
     "hangeul",
@@ -18,27 +23,35 @@
     "electron",
     "nfc"
   ],
-  "author": "",
-  "license": "SEE LICENSE IN LICENSE",
-  "dependencies": {},
+  "engines": {
+    "node": ">=22.12"
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "concurrently": "^9.2.1",
-    "electron": "^42.4.0",
+    "electron": "^42.11.10",
     "electron-builder": "^26.0.12",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
-    "vite": "^7.2.7",
-    "wait-on": "^9.0.3"
+    "vite": "^7.2.7"
   },
   "build": {
     "appId": "app.hangeul-filename-fixer.desktop",
-    "productName": "Hangeul Filename Fixer",
     "asar": true,
+    "electronLanguages": [
+      "ko",
+      "en"
+    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
