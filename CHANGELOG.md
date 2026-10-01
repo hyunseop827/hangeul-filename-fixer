@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-01
+
 2026-10-01 코드 리뷰와 정리 작업 결과입니다. 자세한 근거는 [docs/CODE_REVIEW_2026-10-01.md](docs/CODE_REVIEW_2026-10-01.md)에 있습니다.
 
 ### 수정
@@ -69,5 +71,6 @@
 
 참고: Git 태그 `v1.0.0`은 커밋 `afd5876`을 가리키지만, GitHub 릴리스의 DMG는 다음 커밋 `5044478`(사본 생성 후 NFC 확인 추가)이 올라간 직후에 업로드됐습니다.
 
-[Unreleased]: https://github.com/hyunseop827/hangeul-filename-fixer/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/hyunseop827/hangeul-filename-fixer/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/hyunseop827/hangeul-filename-fixer/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/hyunseop827/hangeul-filename-fixer/releases/tag/v1.0.0
