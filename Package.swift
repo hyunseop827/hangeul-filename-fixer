@@ -22,7 +22,7 @@ let package = Package(
 			name: "HangeulFilenameFixerCoreTests",
 			dependencies: ["HangeulFilenameFixerCore"]
 		),
-		// The app's model and helpers (no window is opened), localization table.
+		// The app's model, views and window (created, never put on the screen), localization table.
 		.testTarget(
 			name: "HangeulFilenameFixerTests",
 			dependencies: ["HangeulFilenameFixer", "HangeulFilenameFixerCore"]
