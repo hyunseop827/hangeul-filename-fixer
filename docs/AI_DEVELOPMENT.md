@@ -11,9 +11,10 @@
 | 문제 발견: 맥에서 과제를 제출하면 교수님 Windows PC에서 파일명이 깨지는 문제 | 구현 초안 작성과 리팩터링 |
 | 요구 사항과 UX 결정: 원본 보존, 사본 생성, 파일 하나씩, 미리보기 카드 3장 | 다관점 코드 리뷰와 반박 검증 |
 | 실제 환경 테스트: Chrome·Safari + Gmail, Chrome + Naver, Chrome + Daum 조합을 Windows에서 확인 ([README의 메일 첨부 주의](../README.md#메일-첨부-주의)) | 단위 테스트, 앱 자동 조작 검증 스크립트 작성 |
-| 배포 여부, 라이선스, 버전 같은 최종 결정 | README, AGENTS.md, 설계 문서 작성 |
+| 배포 여부("올려"라고 해야 배포), 라이선스, major 버전 같은 최종 결정 | README, AGENTS.md, 설계 문서 작성 |
 | Swift로 다시 만들 때의 목표(1.1.0과 같은 동작)와 창 크기 결정 | 구현 전 실험, 1.x 코드와의 결과 비교, 변이 테스트 |
 | | 파일 형식 아이콘(`Resources/FileIcons/source/`) 생성 |
+| | 버전과 릴리스 노트 준비. "올려"를 들으면 커밋 → PR → CI 통과 후 병합. 태그와 GitHub Release는 CI가 만들고, AI는 손으로 태그를 만들거나 릴리스를 올리지 않음 |
 
 ## 작업 기록
 
@@ -87,7 +88,7 @@
 
 | 파일 | 내용 |
 | --- | --- |
-| [AGENTS.md](../AGENTS.md) | 작업 규칙, 명령어, 확인 순서, 의도된 동작, 보안 설정 |
+| [AGENTS.md](../AGENTS.md) | 작업 규칙, 명령어, 확인 순서, 의도된 동작, 보안 설정, 변경과 배포 절차 (영어) |
 | [CLAUDE.md](../CLAUDE.md) | Claude Code용 진입점 (AGENTS.md를 불러옴) |
 | [docs/ARCHITECTURE.md](ARCHITECTURE.md) | 문제 배경, 처리 흐름, 모듈 경계, Core 공개 API, 파일 시스템에서 알아둘 점, 사본이 가져가는 것, 설계 결정 |
 | [docs/CODE_REVIEW_2026-10-01.md](CODE_REVIEW_2026-10-01.md) | Electron 앱(v1.1.0) 때의 리뷰 결과, 반영하지 않은 항목과 이유, 사용자 결정 사항 |

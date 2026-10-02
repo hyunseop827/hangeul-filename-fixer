@@ -184,13 +184,13 @@ Requirements: macOS with Xcode 26 or later (Swift 6.2 or later). The app is a Sw
 
 The filename rules are in [Sources/HangeulFilenameFixerCore/Naming.swift](Sources/HangeulFilenameFixerCore/Naming.swift), and copying and verification in [Sources/HangeulFilenameFixerCore/FileCopy.swift](Sources/HangeulFilenameFixerCore/FileCopy.swift). The app itself (AppKit + SwiftUI) is under `Sources/HangeulFilenameFixer/`.
 
-Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
+Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
+
+When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The app version is the `CFBundleShortVersionString` in `Resources/Info.plist`. The `CI` workflow also runs the tests and builds and checks the DMG for every pull request.
 
 ## Built with AI
 
-This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
-
-When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The app version is the `CFBundleShortVersionString` in `Resources/Info.plist`. The `CI` workflow also runs the tests and builds and checks the DMG for every pull request.
+This app is developed with AI coding agents under the direction of its owner, Hyunseop Kim. The tools used so far are OpenAI Codex (v1.0.0) and Claude Code (Claude Opus 5.5 and Claude Fable 5.1). The owner defines the problem, tests real mail and upload flows, and makes the final decisions, including releases; the agents follow [AGENTS.md](AGENTS.md) for implementation, tests, and documentation. How AI was used and how its results were checked is in [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
 
 ## Installation Notes
 

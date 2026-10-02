@@ -308,13 +308,11 @@ Apple 공증을 거치지 않았기 때문에 다른 Mac에서 처음 실행할 
 
 ### AI 활용
 
-이 프로젝트는 AI 코딩 도구를 활용해 만들었습니다.<br>
-문제 정의, 실제 메일·제출 환경 테스트, 최종 결정은 사람이 맡고, AI는 구현·코드 리뷰·테스트·문서 작업을 도왔습니다.
+이 앱은 저장소 소유자(Hyunseop Kim)가 방향을 정하고, AI 코딩 에이전트가 그 지시에 따라 개발합니다. 지금까지 쓴 도구는 OpenAI Codex(v1.0.0)와 Claude Code(Claude Opus 5.5, Claude Fable 5.1)입니다.<br>
+문제 정의, 실제 메일·제출 환경 테스트, 배포 같은 최종 결정은 사람이 맡고, 에이전트는 [AGENTS.md](AGENTS.md)(영어)의 작업 규칙을 따라 구현·테스트·문서 작업을 합니다. AI를 어떻게 썼고 결과를 어떻게 확인했는지는 [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md)에 있습니다.
 
-- [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md): AI를 어떻게 썼고 결과를 어떻게 확인했는지
 - [docs/CODE_REVIEW_2026-10-01.md](docs/CODE_REVIEW_2026-10-01.md): 1.1.0 때의 AI 다관점 코드 리뷰 결과
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): 구조와 설계 배경
-- [AGENTS.md](AGENTS.md): AI 코딩 에이전트와 기여자를 위한 작업 안내
 
 ### 라이선스
 
