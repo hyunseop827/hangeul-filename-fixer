@@ -44,7 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
-		NSApp.mainMenu = MainMenu.make()
+		// The updater starts with the app (AppUpdater.swift says what that does and does not send), and
+		// "업데이트 확인…" in the app menu is wired to it.
+		NSApp.mainMenu = MainMenu.make(updateCheck: AppUpdater.shared.check)
 		// Not activated here: macOS brings an app to the front when the user opens it, and leaves it in the background
 		// when it was asked to (`open -g`).
 		openWindow()
@@ -66,7 +68,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	/// Quitting while a copy is being written waits for that copy: stopped half-way it would stay behind, incomplete,
-	/// under its final name.
+	/// under its final name. Sparkle's quit for installing an update comes through here as well (it asks the app to
+	/// quit the ordinary way), so an update waits for the copy too.
 	func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
 		guard conversions.running > 0 else {
 			return .terminateNow

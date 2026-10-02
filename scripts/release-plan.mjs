@@ -2,7 +2,8 @@
 // Reads the version from Resources/Info.plist (CFBundleShortVersionString) and the notes from .github/release-notes.md,
 // compares them with the version tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT.
 //   node scripts/release-plan.mjs --check   only validates (CI runs this on every push to main and every pull request,
-//                                           so a missing version bump or notes header shows up before the merge)
+//                                           so a missing version bump or notes header, or a changed update key, shows
+//                                           up before the merge)
 // Run it locally, from the repository root on a Mac (needs gh), to see what CI would do with the current commit.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -15,14 +16,17 @@ const notesPath = ".github/release-notes.md";
 const infoPlistPath = "Resources/Info.plist";
 // Everything that changes what ends up in the DMG. Changing it after a release needs a new version.
 //   Sources, Package.swift      the code and how it is compiled (targets, minimum macOS)
-//   Package.resolved            the exact versions of dependencies (there are none yet, so the file does not exist)
-//   Resources                   Info.plist, the icon, the Korean texts and the file-type icons, copied into the bundle
+//   Package.resolved            the exact Sparkle version and revision that is built into the app
+//   Resources                   Info.plist (with the update settings), the icon, the Korean texts, the file-type icons
+//                               and the third-party notices, copied into the bundle, and the entitlements the app is
+//                               signed with
 //   scripts/build-app.sh        builds the two halves, assembles the bundle and signs it
 //   scripts/toolchain.sh        the compiler and the flags build-app.sh builds with
 //   scripts/make-dmg.sh         the disk image: its layout, volume name and format
 // Not here, because the DMG stays the same: Tests, docs, .github (workflows, release notes), and the scripts that only
-// check or prepare (test.sh, verify-dmg.sh, release-plan.mjs, make-file-icons.swift, whose output is the PDFs
-// committed in Resources).
+// check or prepare (test.sh, verify-dmg.sh, release-plan.mjs, check-release-tools.sh, make-file-icons.swift, whose
+// output is the PDFs committed in Resources), or that write and check the update feed of a release (make-appcast.sh,
+// ed25519-verify.swift).
 // Left out on purpose although it decides which Xcode (and so which SDK) CI builds with: scripts/select-xcode.sh.
 // Like the workflows, it is part of the environment a release is built in, and that environment also changes
 // without any commit (a runner image gains a newer Xcode 26.x). A change of that script alone does not call for a
@@ -72,8 +76,8 @@ if (!semver.test(version)) {
 }
 // The build number. A release build gets the CI run number instead (APP_BUILD in release.yml), also an integer.
 const build = plistValue("CFBundleVersion");
-if (!/^[0-9]+$/.test(build)) {
-  fail(`${infoPlistPath} 의 CFBundleVersion 은 정수여야 합니다 (지금: '${build}').`);
+if (!/^[1-9][0-9]*$/.test(build)) {
+  fail(`${infoPlistPath} 의 CFBundleVersion 은 1 이상의 정수여야 합니다 (지금: '${build}').`);
 }
 const tag = `v${version}`;
 
@@ -123,6 +127,51 @@ for (const known of new Set([...tags, ...releases.map((release) => release.name)
   }
 }
 
+// In-app updates (Sparkle). An installed copy accepts an update only when its signature fits the SUPublicEDKey that
+// copy itself carries; the app is ad-hoc signed, so there is no second way for it to trust one. A release with another
+// key would pass every other check (its own key and signature fit each other) and then be refused by every copy that
+// is already installed. So this commit's key must be the key of every published release that shipped with one.
+// The keys are read from the tags (Resources/Info.plist as it was released). A release from before Sparkle has no key
+// (1.x has no such file), and neither has one that shipped with the placeholder.
+const updateKey = /^[A-Za-z0-9+/]{43}=$/; // an Ed25519 public key: 32 bytes in base64
+function updateKeyOf(plistText) {
+  const result = spawnSync("plutil", ["-extract", "SUPublicEDKey", "raw", "-o", "-", "-"], { input: plistText, encoding: "utf8" });
+  const key = result.status === 0 ? result.stdout.trim() : "";
+  return updateKey.test(key) ? key : "";
+}
+const currentUpdateKey = updateKeyOf(fs.readFileSync(infoPlistPath, "utf8"));
+// The newest published release, other than this version's, that shipped with a key: release.yml then expects a
+// published update feed. Empty before the first release with Sparkle.
+let sparkleRelease = "";
+for (const release of releases) {
+  if (release.draft || release.name === tag) {
+    continue;
+  }
+  if (!tags.includes(release.name)) {
+    if (!release.name.startsWith("v")) {
+      continue; // not one of this workflow's releases (only v* tags are listed above)
+    }
+    fail(`릴리스 ${release.name} 의 태그가 이 저장소에 없어 그 릴리스의 업데이트 키를 확인할 수 없습니다. git fetch --tags origin 뒤 다시 실행하세요.`);
+  }
+  // "The tag has no such file" (a release from before the Swift app) is told apart from "the tag cannot be read".
+  const listed = spawnSync("git", ["ls-tree", "--name-only", `refs/tags/${release.name}`, "--", infoPlistPath], { encoding: "utf8" });
+  if (listed.status !== 0) {
+    fail(`태그 ${release.name} 를 읽지 못해 그 릴리스의 업데이트 키를 확인할 수 없습니다.`);
+  }
+  const releasedKey = listed.stdout.trim() ? updateKeyOf(git("show", `refs/tags/${release.name}:${infoPlistPath}`)) : "";
+  if (!releasedKey) {
+    continue;
+  }
+  if (releasedKey !== currentUpdateKey) {
+    fail(
+      `${infoPlistPath} 의 SUPublicEDKey 가 ${release.name} 릴리스의 키와 다릅니다. ` +
+        "설치된 앱은 자기가 가진 키로 서명된 업데이트만 받으므로, 키를 바꿔 릴리스하면 이미 설치된 앱은 모두 업데이트할 수 없게 됩니다. " +
+        `${release.name} 의 키(${releasedKey})로 되돌리세요. 저장소 소유자만 바꿀 수 있는 값입니다.`
+    );
+  }
+  sparkleRelease ||= release.name;
+}
+
 const tagCommit = tags.includes(tag) ? git("rev-parse", `refs/tags/${tag}^{commit}`) : null;
 const matching = releases.filter((release) => release.name === tag);
 const releaseState = matching.some((release) => !release.draft) ? "published" : matching.length ? "draft" : "none";
@@ -160,7 +209,8 @@ const outputs = {
   publish,
   verify,
   tag_exists: Boolean(tagCommit),
-  release_state: releaseState
+  release_state: releaseState,
+  sparkle_release: sparkleRelease
 };
 if (checkOnly) {
   process.exit(0);

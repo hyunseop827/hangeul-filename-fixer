@@ -1,7 +1,16 @@
-# Checks every push to main and every pull request: release readiness (version, release notes), the unit tests on both
-# architectures (arm64, and x86_64 through Rosetta), and the real DMG: built, inspected, and its app started once per
-# architecture. On main, a passing run then calls release.yml, which releases the version in Resources/Info.plist if
-# it is new (see there).
+# Checks every push to main and every pull request: release readiness (version, release notes, the update key of the
+# releases so far), the tools only a release runs (without a key), the unit tests on both architectures (arm64, and
+# x86_64 through Rosetta), and the real DMG: built, inspected, and its app started once per architecture. On main, a
+# passing run then calls release.yml, which releases the version in Resources/Info.plist if it is new (see there).
+#
+# When the unit tests fail, the steps after them still run (the x86_64 tests, the DMG, its inspection and the launch
+# check), and the job fails all the same. That is for a tree whose Resources/Info.plist holds a placeholder instead of the
+# update key: the key-format test fails then, on purpose, and the app built in that state must still be shown to
+# build, pass the inspection and start. A failed job never reaches the release job below.
+#
+# The only repository secret these workflows use is SPARKLE_PRIVATE_KEY (the EdDSA key that signs each release's dmg
+# for the in-app updater; see release.yml). It is handed to release.yml alone, by name, in the `release` job. That job
+# runs only for pushes to main, so pull requests never see the key and need none: the `check` job uses no secrets.
 name: CI
 
 on:
@@ -53,15 +62,25 @@ jobs:
           echo "node $(node --version)"
           node scripts/release-plan.mjs --check
 
+      # scripts/make-appcast.sh and scripts/ed25519-verify.swift run for real only in a release on main. Here they
+      # are run without a key: published RFC 8032 test vectors and a stand-in for Sparkle's sign_update. A mistake in
+      # them shows on the pull request instead of in the release that needs them.
+      - name: 릴리스 도구 확인 (키 없이)
+        run: ./scripts/check-release-tools.sh
+
       # CI is set on runners, so the tests that need real HFS+ and exFAT volumes (disk images made with hdiutil)
       # must run; they cannot be skipped here.
       - name: 테스트
+        id: test
         run: ./scripts/test.sh
 
       # The Intel half of the app cannot run natively on this Apple Silicon runner, so the same tests are built and
       # run as x86_64 under Rosetta: a shell started with `arch -x86_64` runs everything below it (swift, the tests,
       # hdiutil) as x86_64.
+      # From here on the steps also run when the tests above failed (see the top of this file), but not when the
+      # tests never started because an earlier step failed, and not when the run was cancelled.
       - name: 테스트 (x86_64, Rosetta)
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
         run: |
           if ! arch -x86_64 /usr/bin/true 2> /dev/null; then
             echo "Rosetta가 없어 설치합니다."
@@ -83,9 +102,12 @@ jobs:
 
       - name: DMG 만들기 (release 빌드 포함)
         id: dmg
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
         run: ./scripts/make-dmg.sh
 
+      # Only with a DMG to look at.
       - name: DMG 확인
+        if: ${{ !cancelled() && steps.dmg.outcome == 'success' }}
         env:
           DMG: ${{ steps.dmg.outputs.dmg }}
           VERSION: ${{ steps.dmg.outputs.version }}
@@ -96,6 +118,7 @@ jobs:
       # a crash at launch ends the process. An app that hangs, shows only an alert, or whose launch code raises an
       # exception (AppKit catches it and carries on) stays alive, but its window never appears.
       - name: 실행 확인 (arm64, x86_64)
+        if: ${{ !cancelled() && steps.dmg.outcome == 'success' }}
         env:
           DMG: ${{ steps.dmg.outputs.dmg }}
         run: |
@@ -189,3 +212,7 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
+    # By name, not `secrets: inherit`: release.yml gets this one secret and no other the repository may gain later.
+    # Empty when the owner has not registered it; release.yml then stops a run that would publish, with instructions.
+    secrets:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}

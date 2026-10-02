@@ -113,6 +113,22 @@ import HangeulFilenameFixerCore
 	}
 }
 
+/// Stands in for Sparkle's controller: the target of "업데이트 확인…", which also answers whether the item is enabled
+/// (Sparkle says no while a check is running).
+@MainActor
+private final class FakeUpdaterController: NSObject, NSMenuItemValidation {
+	var canCheck = true
+	var checks = 0
+
+	@objc func checkForUpdates(_ sender: Any?) {
+		checks += 1
+	}
+
+	func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+		canCheck
+	}
+}
+
 /// The menu bar as it is built in code: Korean titles, the standard key equivalents and actions.
 @MainActor
 @Suite struct MainMenuTests {
@@ -132,13 +148,15 @@ import HangeulFilenameFixerCore
 
 	@Test func theMenuBarIsKoreanWithTheStandardKeyEquivalents() throws {
 		_ = NSApplication.shared
-		let menuBar = MainMenu.make()
+		let updater = FakeUpdaterController()
+		let menuBar = MainMenu.make(updateCheck: UpdateCheck(target: updater, action: #selector(FakeUpdaterController.checkForUpdates(_:))))
 		let menus = menuBar.items.map(\.submenu)
 
 		// No "보기" menu: the window has no full screen, and nothing else belongs there.
 		#expect(menus.map { $0?.title } == ["한글 파일명 정리기", "파일", "편집", "윈도우"])
 		#expect(rows(menus[0]) == [
 			"한글 파일명 정리기에 관하여 |  | orderFrontStandardAboutPanel:",
+			"업데이트 확인… |  | checkForUpdates:",
 			"-",
 			"서비스 |  | ▸",
 			"-",
@@ -165,19 +183,91 @@ import HangeulFilenameFixerCore
 		}
 		#expect(windowRows == ["최소화 | ⌘m | performMiniaturize:", "확대/축소 |  | performZoom:", "앞으로 모두 가져오기 |  | arrangeInFront:"])
 
-		// No target: every item goes to the first responder (the name field's editor, the window, the app).
+		// No target: every item goes to the first responder (the name field's editor, the window, the app). All but
+		// "업데이트 확인…", which goes to the updater.
+		let update = try #require(menus[0]?.items[1])
+		#expect(update.target === updater)
 		for menu in menus {
-			for item in menu?.items ?? [] where !item.isSeparatorItem && item.submenu == nil {
+			for item in menu?.items ?? [] where !item.isSeparatorItem && item.submenu == nil && item !== update {
 				#expect(item.target == nil, "\(item.title)")
 			}
 		}
-		#expect(NSApp.servicesMenu === menus[0]?.items[2].submenu)
+		#expect(NSApp.servicesMenu === menus[0]?.items[3].submenu)
 		#expect(NSApp.windowsMenu === menus[3])
 
 		// Nothing the app builds asks for full screen.
 		for menu in menus {
 			#expect(menu?.items.contains { $0.action == #selector(NSWindow.toggleFullScreen(_:)) } == false)
 		}
+	}
+}
+
+/// 앱 메뉴 > "업데이트 확인…": always there, right under the About item.
+@MainActor
+@Suite struct UpdateMenuItemTests {
+	private func updateItem(in menuBar: NSMenu) throws -> (menu: NSMenu, item: NSMenuItem) {
+		let menu = try #require(menuBar.items.first?.submenu)
+		#expect(menu.items.first?.action == #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+		let item = try #require(menu.items.dropFirst().first)
+		#expect(Exact(item.title) == Exact("업데이트 확인…"))
+		#expect(item.keyEquivalent.isEmpty)
+		#expect(menu.items.dropFirst(2).first?.isSeparatorItem == true)
+		return (menu, item)
+	}
+
+	/// With an updater the item is the updater's: its target answers whether a check can start now, so the item is
+	/// disabled while one is running, and choosing it starts a check.
+	@Test func withAnUpdaterTheItemFollowsItsTarget() throws {
+		_ = NSApplication.shared
+		let updater = FakeUpdaterController()
+		let (menu, item) = try updateItem(in: MainMenu.make(updateCheck: UpdateCheck(target: updater, action: #selector(FakeUpdaterController.checkForUpdates(_:)))))
+		#expect(item.target === updater)
+		#expect(item.action == #selector(FakeUpdaterController.checkForUpdates(_:)))
+		#expect(menu.autoenablesItems, "AppKit asks the target each time the menu opens")
+
+		menu.update()
+		#expect(item.isEnabled)
+		menu.performActionForItem(at: 1)
+		#expect(updater.checks == 1)
+
+		// A check is running: disabled, and choosing it (by a key equivalent, by automation) does nothing.
+		updater.canCheck = false
+		menu.update()
+		#expect(!item.isEnabled)
+		menu.performActionForItem(at: 1)
+		#expect(updater.checks == 1)
+
+		updater.canCheck = true
+		menu.update()
+		#expect(item.isEnabled)
+	}
+
+	/// Without an updater (the key for updates is not set yet, or the app is not run from its bundle) the item is
+	/// there and disabled: it has no action, so nothing in the app could answer for it.
+	@Test func withoutAnUpdaterTheItemIsDisabled() throws {
+		_ = NSApplication.shared
+		let (menu, item) = try updateItem(in: MainMenu.make(updateCheck: nil))
+		#expect(item.target == nil)
+		#expect(item.action == nil)
+
+		menu.update()
+		#expect(!item.isEnabled)
+		// The items around it are not affected.
+		#expect(menu.items.last?.action == #selector(NSApplication.terminate(_:)))
+	}
+
+	/// What the app hands to the menu is the updater's own answer: nothing under `swift test`, where there is no app
+	/// bundle and so no feed and no key.
+	@Test func theAppWiresTheItemToItsUpdater() throws {
+		_ = NSApplication.shared
+		#expect(AppUpdater.shared.check == nil)
+		let (menu, item) = try updateItem(in: MainMenu.make(updateCheck: AppUpdater.shared.check))
+		menu.update()
+		#expect(!item.isEnabled)
+
+		let delegate = try String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+			.appendingPathComponent("Sources/HangeulFilenameFixer/HangeulFilenameFixerApp.swift"), encoding: .utf8)
+		#expect(delegate.contains("NSApp.mainMenu = MainMenu.make(updateCheck: AppUpdater.shared.check)"))
 	}
 }
 

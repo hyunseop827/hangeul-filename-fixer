@@ -30,8 +30,8 @@ Windows 컴퓨터나 학교 교수님한테는 이렇게 깨져 보일 수 있�
 
 버전별 파일과 릴리스 노트는 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 있습니다. 소스 코드는 이 저장소에 있습니다.
 
-**요구 사항:** macOS 12 Monterey 이상. Apple Silicon(M1 이상)과 Intel Mac을 모두 지원하는 유니버설 앱이고, DMG는 약 2MB입니다. 앱 화면과 메뉴는 한국어입니다.<br>
-2.0.0은 지금까지 macOS 27을 쓰는 Apple Silicon Mac 한 대에서만 실행해 봤습니다. Intel Mac과 macOS 12 ~ 26에서는 아직 실행해 보지 못했습니다.
+**요구 사항:** macOS 12 Monterey 이상. Apple Silicon(M1 이상)과 Intel Mac을 모두 지원하는 유니버설 앱이고, DMG는 약 3MB입니다. 앱 화면과 메뉴는 한국어입니다.<br>
+업데이트 기능을 넣기 전의 2.0.0은 macOS 27을 쓰는 Apple Silicon Mac 한 대에서 직접 써 봤고, 자동 검사(CI, macOS 26)에서 Apple Silicon용과 Intel용(Rosetta)으로 켜지는 것을 확인했습니다. 업데이트 기능을 넣은 지금의 2.0.0은 아직 실행해 보지 못했습니다. 실제 Intel Mac과 macOS 12 ~ 25에서도 아직 실행해 보지 못했습니다.
 
 현재 DMG는 개인이 배포하는 거라서 Apple의 공증을 받지 못했습니다.<br>
 처음 실행할 때 macOS가 `Apple이 악성 코드가 없음을 확인할 수 없습니다`라는 경고를 띄울 수 있습니다.<br>
@@ -60,6 +60,24 @@ open "/Applications/한글 파일명 정리기.app"
 ```
 
 이 명령어는 다운로드된 앱에 붙은 macOS 격리 표시만 제거합니다. 소스 코드나 배포 파일을 신뢰할 수 있을 때만 실행하세요.
+
+### 업데이트
+
+2.0.0부터는 앱 안에서 업데이트할 수 있습니다. 새 DMG를 직접 받지 않아도 됩니다.
+
+- 메뉴 막대의 `한글 파일명 정리기` → `업데이트 확인…`을 누르면 바로 확인합니다. 앱이 켜져 있는 동안에는 하루에 한 번 앱이 스스로 확인하기도 합니다.
+- 새 버전이 있으면 바뀐 점을 보여주고 설치할지 물어봅니다. `업데이트 설치`를 골라야만 새 버전을 내려받고, 받은 파일의 서명을 확인한 뒤 앱을 바꾸고 다시 엽니다. 묻지 않고 설치하지 않습니다.
+- 앱은 꼭 `응용 프로그램` 폴더로 옮겨서 쓰세요. DMG 안에서 바로 열었거나 내려받은 자리에서 그대로 연 앱은 스스로 업데이트하지 못합니다.
+- **1.x(1.1.0까지)를 쓰고 있다면** 앱 안에 이 기능이 없습니다. 2.0.0 DMG를 받아 `응용 프로그램` 폴더의 앱을 한 번만 직접 바꿔 주세요. 그 뒤로는 앱에서 업데이트하면 됩니다.
+
+2.0.0이 업데이트 기능이 들어간 첫 버전이라, 실제 업데이트는 다음 버전이 나올 때 처음 이뤄집니다.
+
+### 개인정보
+
+- 계정이 없고 사용 기록을 모으지 않습니다.
+- 앱이 인터넷에 연결하는 것은 업데이트 확인뿐입니다. 앱이 켜져 있는 동안 하루에 한 번, 그리고 `업데이트 확인…`을 누를 때 GitHub에서 최신 릴리스의 업데이트 목록(`appcast.xml`)을 읽습니다. 파일 이름이나 내용처럼 사용자의 파일에 대한 정보는 보내지 않습니다.
+- 새 버전 파일(DMG)은 설치를 고를 때만 GitHub에서 내려받습니다. 받은 파일은 열기 전에 앱에 들어 있는 서명 키(EdDSA)로 확인합니다. 업데이트에는 [Sparkle](https://sparkle-project.org)을 씁니다.
+- Sparkle은 앱의 환경설정에 약간의 상태를 저장합니다(마지막으로 확인한 때, 건너뛴 버전, 창 위치).
 
 ## 그래서 이게 뭐 하는 프로그램인데요?
 
@@ -222,14 +240,15 @@ Chrome + Gmail 웹 첨부 조합에서는 앱이 만든 사본이어도 파일�
 ### 요구 사항
 
 - macOS (Apple Silicon Mac에서 개발·테스트)
-- Xcode 26 이상 (Swift 6.2 이상). Xcode 프로젝트 없이 Swift Package Manager로 빌드하고, 외부 라이브러리는 쓰지 않습니다.
+- Xcode 26 이상 (Swift 6.2 이상). Xcode 프로젝트 없이 Swift Package Manager로 빌드합니다. 외부 라이브러리는 앱 업데이트에 쓰는 [Sparkle](https://github.com/sparkle-project/Sparkle) 2.10.0 하나이고, 처음 빌드할 때 Swift Package Manager가 내려받습니다.
 - release 빌드와 DMG는 Xcode가 있어야 만들어집니다. 명령어 도구(Command Line Tools)만으로는 Intel용 절반을 만들지 못합니다.
 - Node.js는 `scripts/release-plan.mjs`를 돌릴 때만 씁니다. 설치할 패키지는 없고 `gh`가 필요합니다.
 
 ### 프로젝트 구조
 
 ```text
-Package.swift                 Swift 패키지 정의 (macOS 12 이상, 외부 라이브러리 없음)
+Package.swift                 Swift 패키지 정의 (macOS 12 이상, 외부 라이브러리는 Sparkle 하나)
+Package.resolved              빌드에 쓰는 Sparkle의 정확한 버전
 
 Sources/
   HangeulFilenameFixerCore/   파일명 규칙과 복사 (화면 코드 없음)
@@ -242,6 +261,7 @@ Sources/
   HangeulFilenameFixer/       앱 (AppKit + SwiftUI)
     HangeulFilenameFixerApp.swift   앱 시작과 종료, 창 열기
     MainMenu.swift            한국어 메뉴 막대
+    AppUpdater.swift          업데이트 확인 (Sparkle). 앱에서 네트워크를 쓰는 유일한 코드
     MainWindowController.swift      창, 파일·폴더 선택 창, Finder에서 보기
     WindowFit.swift           창 크기를 화면 내용에 맞추는 계산
     NotificationObservation.swift   주인이 사라지면 스스로 해제되는 알림 관찰자
@@ -250,29 +270,34 @@ Sources/
     Views/                    화면 (파일 놓는 곳, 선택한 파일 화면, 이름 입력 칸, 색과 크기)
 
 Resources/
-  Info.plist                  앱 정보와 버전
+  Info.plist                  앱 정보와 버전, 업데이트 설정
+  HangeulFilenameFixer.entitlements   앱 서명에 넣는 권한 하나 (Sparkle을 불러오는 데 필요)
+  ThirdPartyNotices.txt       Sparkle의 라이선스 고지 (앱 번들에 함께 들어감)
   AppIcon.icns, AppIcon.png   앱 아이콘과 원본 이미지
   ko.lproj/                   화면 문구(Localizable.strings)와 앱 이름(InfoPlist.strings)
   FileIcons/                  파일 형식별 아이콘 (PDF. 원본 SVG는 source/)
 
 Tests/
   HangeulFilenameFixerCoreTests/   파일명 규칙, 복사·확인, HFS+·exFAT 디스크 이미지 테스트
-  HangeulFilenameFixerTests/       화면 상태, 창, 메뉴, 문구 테스트
+  HangeulFilenameFixerTests/       화면 상태, 창, 메뉴, 문구, 업데이트 설정과 번들 구성 테스트
 
 scripts/
   test.sh                 단위 테스트 실행
-  build-app.sh            앱 번들을 만들고 서명
+  build-app.sh            앱 번들을 만들고 Sparkle을 넣은 뒤 서명
   make-dmg.sh             release 빌드를 DMG로 묶고 검사
   toolchain.sh            빌드에 쓸 Xcode 고르기 (test.sh와 build-app.sh가 불러 씀)
-  verify-dmg.sh           DMG 안 앱의 버전·서명·아키텍처 확인 (CI가 사용)
+  verify-dmg.sh           DMG 안 앱의 버전·서명·아키텍처·업데이트 설정 확인 (CI가 사용)
+  make-appcast.sh         릴리스 때 DMG에 서명하고 업데이트 목록(appcast.xml)을 만듦 (CI가 사용)
+  ed25519-verify.swift    업데이트 서명이 앱의 공개 키와 맞는지 확인 (CI가 사용)
+  check-release-tools.sh  위의 두 스크립트를 서명 키 없이 돌려 보는 검사 (CI가 사용)
   select-xcode.sh         CI 러너에서 Xcode 26.x 고르기 (CI가 사용)
-  release-plan.mjs        새 버전을 릴리스할지 판단 (CI가 사용)
+  release-plan.mjs        새 버전을 릴리스할지 판단, 업데이트 키가 바뀌지 않았는지 확인 (CI가 사용)
   make-file-icons.swift   파일 형식 아이콘을 SVG에서 PDF로 변환
 
 .github/
-  workflows/ci.yml        main 푸시·PR마다 버전·릴리스 노트 확인, 테스트, DMG 빌드와 확인, 앱 실행 확인. main에서는 이어서 릴리스
-  workflows/release.yml   새 버전이면 DMG 빌드, 태그, GitHub Release 공개
-  release-notes.md        다음 버전의 릴리스 노트
+  workflows/ci.yml        main 푸시·PR마다 버전·릴리스 노트 확인, 릴리스 도구 확인, 테스트, DMG 빌드와 확인, 앱 실행 확인. main에서는 이어서 릴리스
+  workflows/release.yml   새 버전이면 DMG 빌드, 업데이트 목록 서명, 태그, GitHub Release 공개
+  release-notes.md        다음 버전의 릴리스 노트 (업데이트 창에도 이 내용이 보임)
 
 images/         README 이미지
 
@@ -285,18 +310,21 @@ docs/           아키텍처, AI 활용 기록, 코드 리뷰 기록
 
 | 명령어 | 역할 | 설명 |
 | --- | --- | --- |
-| `./scripts/test.sh` | 테스트 | 파일명 규칙, 복사·확인, 화면 상태와 창의 단위 테스트를 실행합니다. HFS+·exFAT 확인용 작은 디스크 이미지 두 개를 잠깐 만들었다가 지웁니다. |
-| `./scripts/build-app.sh` | 앱 만들기 | `build/한글 파일명 정리기.app`을 만들고 ad-hoc 서명합니다. 이 Mac의 아키텍처용 debug 빌드입니다. `open "build/한글 파일명 정리기.app"`으로 실행합니다. |
+| `./scripts/test.sh` | 테스트 | 파일명 규칙, 복사·확인, 화면 상태와 창, 업데이트 설정의 단위 테스트를 실행합니다. HFS+·exFAT 확인용 작은 디스크 이미지 두 개를 잠깐 만들었다가 지웁니다. |
+| `./scripts/build-app.sh` | 앱 만들기 | `build/한글 파일명 정리기.app`을 만들고 Sparkle을 넣은 뒤 ad-hoc 서명합니다. 이 Mac의 아키텍처용 debug 빌드입니다. `open "build/한글 파일명 정리기.app"`으로 실행합니다. |
 | `./scripts/build-app.sh release` | release 빌드 | 같은 자리에 유니버설(Apple Silicon + Intel) 앱을 만듭니다. |
 | `./scripts/make-dmg.sh` | DMG 만들기 | release 빌드를 `build/release/`에 따로 만든 뒤 DMG로 묶고, 다시 열어 버전과 서명을 확인합니다. |
-| `scripts/verify-dmg.sh <DMG> <버전>` | DMG 확인 | DMG 안 앱의 버전, 서명, 아키텍처(arm64 + x86_64), 최소 macOS를 확인합니다. |
+| `scripts/verify-dmg.sh <DMG> <버전>` | DMG 확인 | DMG 안 앱의 버전, 서명, 아키텍처(arm64 + x86_64), 최소 macOS, 그리고 Sparkle과 업데이트 설정을 확인합니다. |
 | `node scripts/release-plan.mjs --check` | 릴리스 확인 | 지금 버전과 릴리스 노트로 CI가 무엇을 할지 미리 봅니다. 아무것도 올리지 않습니다. |
 
 **DMG 결과물은 `build/hangeul-filename-fixer-<버전>.dmg`에 만들어집니다.** 체크섬 파일(`.dmg.sha256`)도 옆에 생깁니다. Apple Silicon과 Intel을 모두 담은 유니버설 빌드입니다.
 
+업데이트 서명에 쓰는 키는 저장소 소유자만 만들고 보관합니다. 공개 키는 `Resources/Info.plist`에 들어 있습니다. 그 자리에 실제 키 대신 자리표시자(`PASTE_PUBLIC_KEY_FROM_generate_keys`)가 들어 있으면 테스트 하나가 일부러 실패하고, 그렇게 빌드한 앱은 업데이트를 확인하지 않습니다(`업데이트 확인…` 메뉴가 꺼져 있습니다). 자세한 내용은 [AGENTS.md](AGENTS.md)의 "In-app updates with Sparkle"에 있습니다.
+
 ### 배포
 
 `main`에 새 버전이 올라오면 GitHub Actions가 테스트를 거쳐 DMG를 만들고, 릴리스 노트와 함께 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 올립니다.<br>
+이때 DMG에 업데이트용 서명을 하고 업데이트 목록(`appcast.xml`)도 함께 올립니다. 설치된 앱은 이 목록을 읽어 새 버전을 알게 됩니다.<br>
 앱 버전은 `Resources/Info.plist`의 `CFBundleShortVersionString` 한 곳에 적습니다.<br>
 버전과 릴리스 노트를 준비하는 방법은 [AGENTS.md](AGENTS.md)에 있습니다. 진행 상황은 README 맨 위 CI 배지에서 볼 수 있습니다.
 
@@ -323,6 +351,8 @@ Apple 공증을 거치지 않았기 때문에 다른 Mac에서 처음 실행할 
 - 판매, 유료 배포, 유료 제품·서비스에 넣기처럼 이 프로그램으로 돈을 버는 상업적 이용은 허락 없이 할 수 없습니다.
 
 자세한 내용은 [LICENSE](LICENSE)를 확인하세요.
+
+앱에는 업데이트를 위한 오픈 소스 라이브러리 [Sparkle](https://github.com/sparkle-project/Sparkle)(MIT 라이선스)이 들어 있습니다. Sparkle과 Sparkle에 포함된 코드의 라이선스 고지는 [Resources/ThirdPartyNotices.txt](Resources/ThirdPartyNotices.txt)에 있고, 앱 번들 안에도 같은 파일이 들어갑니다.
 
 ### 버전 기록
 

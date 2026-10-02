@@ -107,7 +107,7 @@ import Testing
 			}
 		}
 		#expect(checked >= 11, "\(checked)")
-		for path in ["Package.swift", "Resources/Info.plist"] {
+		for path in ["Package.swift", "Resources/Info.plist", "Resources/HangeulFilenameFixer.entitlements", "Resources/ThirdPartyNotices.txt"] {
 			#expect(isNFCName(try String(contentsOf: Self.repository.appendingPathComponent(path), encoding: .utf8)), "\(path) is not saved in NFC")
 		}
 
@@ -169,7 +169,8 @@ import Testing
 	}
 
 	/// Compiles the app's sources once more (unoptimized, like `swift test`) with `-emit-localized-strings` into a
-	/// temporary folder, against the Core module this test was built with, and reads the `.stringsdata` files.
+	/// temporary folder, against the Core module this test was built with and the Sparkle framework it was linked
+	/// with, and reads the `.stringsdata` files.
 	static func extract() throws -> Extracted {
 		final class Marker {}
 		let products = Bundle(for: Marker.self).bundleURL.deletingLastPathComponent()
@@ -178,6 +179,11 @@ import Testing
 			fileManager.fileExists(atPath: $0.appendingPathComponent("HangeulFilenameFixerCore.swiftmodule").path)
 		}) else {
 			throw Failure("HangeulFilenameFixerCore.swiftmodule not found next to the test bundle (\(products.path))")
+		}
+		// AppUpdater.swift imports Sparkle: SwiftPM leaves Sparkle.framework (the package's binary framework, for both
+		// architectures) beside the test bundle, with either build system.
+		guard fileManager.fileExists(atPath: products.appendingPathComponent("Sparkle.framework/Modules/module.modulemap").path) else {
+			throw Failure("Sparkle.framework not found next to the test bundle (\(products.path))")
 		}
 
 		let out = URL(fileURLWithPath: TestRun.root).appendingPathComponent("l10n-\(UUID().uuidString)")
@@ -193,7 +199,7 @@ import Testing
 		var arguments = [
 			"swiftc", "-c", "-parse-as-library", "-swift-version", "6", "-module-name", "HangeulFilenameFixer",
 			"-target", "\(architecture)-apple-macosx12.0", "-sdk", sdk,
-			"-I", modules.path, "-wmo", "-Onone", "-o", out.appendingPathComponent("app.o").path,
+			"-I", modules.path, "-F", products.path, "-wmo", "-Onone", "-o", out.appendingPathComponent("app.o").path,
 			"-emit-localized-strings", "-emit-localized-strings-path", out.path
 		]
 		// Command Line Tools only (scripts/toolchain.sh): SwiftUI's macro plugin comes from Xcode.
@@ -316,9 +322,10 @@ import Testing
 		]),
 		// The tooltips of the nine file icons.
 		("FileIconType.swift", ["Word 문서", "한글 문서", "PDF 문서", "PowerPoint 문서", "스프레드시트", "텍스트 문서", "이미지 파일", "압축 파일", "일반 파일"]),
-		// The menu bar (not in the old app, whose menu bar was Electron's English one).
+		// The menu bar (not in the old app, whose menu bar was Electron's English one). "업데이트 확인…" is new in 2.0.0:
+		// the app updates itself with Sparkle, whose own windows take their Korean texts from the framework.
 		("MainMenu.swift", [
-			"한글 파일명 정리기", "한글 파일명 정리기에 관하여", "서비스", "한글 파일명 정리기 가리기", "기타 가리기", "모두 보기", "한글 파일명 정리기 종료",
+			"한글 파일명 정리기", "한글 파일명 정리기에 관하여", "업데이트 확인…", "서비스", "한글 파일명 정리기 가리기", "기타 가리기", "모두 보기", "한글 파일명 정리기 종료",
 			"파일", "창 닫기",
 			"편집", "실행 취소", "실행 복귀", "잘라내기", "복사하기", "붙여넣기", "모두 선택",
 			"윈도우", "최소화", "확대/축소", "앞으로 모두 가져오기"

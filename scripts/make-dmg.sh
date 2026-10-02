@@ -11,7 +11,8 @@
 #   APP_BUILD   CFBundleVersion of the bundle, an integer (see build-app.sh); release.yml passes the CI run number
 # The app is signed by build-app.sh: ad-hoc with the hardened runtime, unless its CODESIGN_IDENTITY says otherwise.
 # The disk image itself is not signed and nothing is notarized.
-# Under GitHub Actions the results are also written to $GITHUB_OUTPUT: dmg, sha256, version, build.
+# Under GitHub Actions the results are also written to $GITHUB_OUTPUT: app (the app that is inside the dmg, in
+# build/release), dmg, sha256, version, build.
 # The staging folder and the verification mount live in a temporary folder that is removed even on failure.
 set -e
 setopt pipefail
@@ -103,8 +104,16 @@ hdiutil attach "$OUT" -nobrowse -readonly -noautoopen -noverify -mountpoint "$MN
 MOUNTED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$MNT/$NAME.app/Contents/Info.plist")"
 [[ "$MOUNTED_VERSION" == "$VERSION" ]] || fail "앱 버전이 다릅니다: $MOUNTED_VERSION ≠ $VERSION"
 MOUNTED_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$MNT/$NAME.app/Contents/Info.plist")"
+# The updater's framework came along with its symlinks (the executable loads it through Versions/B), and so did the
+# license texts that must ship with it.
+MOUNTED_FW="$MNT/$NAME.app/Contents/Frameworks/Sparkle.framework"
+[[ -f "$MOUNTED_FW/Versions/B/Sparkle" && -L "$MOUNTED_FW/Versions/Current" && -L "$MOUNTED_FW/Sparkle" ]] \
+	|| fail "디스크 이미지의 앱에 Sparkle.framework(Contents/Frameworks)가 없거나 온전하지 않습니다."
+NOTICES="$MNT/$NAME.app/Contents/Resources/ThirdPartyNotices.txt"
+[[ -f "$NOTICES" ]] && cmp -s "$NOTICES" "$P/Resources/ThirdPartyNotices.txt" \
+	|| fail "앱의 서드파티 고지(Contents/Resources/ThirdPartyNotices.txt)가 없거나 Resources/ThirdPartyNotices.txt 와 다릅니다."
 codesign --verify --deep --strict "$MNT/$NAME.app"
-echo "  OK  앱, Applications 링크, 버전 $MOUNTED_VERSION (빌드 $MOUNTED_BUILD), 서명"
+echo "  OK  앱, Applications 링크, 버전 $MOUNTED_VERSION (빌드 $MOUNTED_BUILD), Sparkle.framework, 서드파티 고지, 서명"
 # Called in a subshell: a signal that arrives while zsh is inside a function ends the script without running the EXIT
 # trap (the cleanup above). The subshell makes the call an ordinary command of the script, where the trap does run.
 (detach_image "$MNT") || fail "검사를 마친 디스크 이미지를 분리하지 못했습니다(hdiutil detach)."
@@ -117,6 +126,7 @@ echo "sha256: $(cut -d' ' -f1 <"$SHA")"
 echo "서명: 앱만 (디스크 이미지는 서명 안 됨), 공증 안 됨"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
 	{
+		print -r -- "app=$APP"
 		print -r -- "dmg=$DMG"
 		print -r -- "sha256=$SHA"
 		print -r -- "version=$VERSION"
