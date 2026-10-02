@@ -1,32 +1,22 @@
-# dependencies
-node_modules/
-
-# build outputs
-dist/
-dist-electron/
-.test-dist/
-release/
-.vite/
-*.dmg
-*.blockmap
-latest*.yml
-builder-debug.yml
-
 # SwiftPM / Xcode build output
 .build/
 .swiftpm/
 DerivedData/
 xcuserdata/
+*.xcuserstate
 
-# App bundle and disk image made by scripts/build-app.sh and scripts/make-dmg.sh: build/한글 파일명 정리기.app,
-# build/release/, build/hangeul-filename-fixer-X.Y.Z.dmg and its checksum. (A rule only hides untracked files: the
-# Electron packaging files still tracked in build/ stay tracked until they are deleted.)
+# App bundle and disk image made by scripts/build-app.sh and scripts/make-dmg.sh:
+# build/한글 파일명 정리기.app, build/release/, build/hangeul-filename-fixer-X.Y.Z.dmg and its checksum.
+# (Resources/AppIcon.icns is tracked; the iconset made from Resources/AppIcon.png goes to build/AppIcon.iconset.)
 /build/
-*.dmg.sha256
 
-# icon sources (build/icon.icns is made from these with iconutil)
-build/AppIcon.iconset/
-build/icon-source.png
+# Release outputs and signing material: a copy made anywhere else must not be committed either.
+*.dmg
+*.dmg.sha256
+*.p12
+*.p8
+*.cer
+*.provisionprofile
 
 # personal AI assistant settings
 .claude/settings.local.json
@@ -45,7 +35,4 @@ local-custom/
 
 # logs and OS files
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 .DS_Store

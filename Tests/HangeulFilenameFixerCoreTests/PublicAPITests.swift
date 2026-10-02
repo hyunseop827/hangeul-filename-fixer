@@ -11,7 +11,7 @@ struct PublicAPITests {
 
 	@Test("hasSameScalars is the comparison for \"is this the same spelling?\"; == is not")
 	func exactSpellingComparison() {
-		// src/App.tsx decided its "already fine" hint with `windowsCompatibleName === sourceName`. For a name whose
+		// src/App.tsx (v1.1.0) decided its "already fine" hint with `windowsCompatibleName === sourceName`. For a name whose
 		// only problem is its normalization, the app's main case, Swift's `==` says "same" and the hint would appear.
 		let parts = splitFileName(Self.decomposedName)
 		let compatibleName = windowsSafeFileName(stem: parts.stem, extension: parts.extension)

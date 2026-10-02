@@ -1,5 +1,5 @@
 // Edge cases beyond the TypeScript suite: odd sources, odd destinations, odd names, and every failure message.
-// Expected names were taken from the TypeScript (electron/filename.ts run in Node 22 on the same inputs).
+// Expected names were taken from the TypeScript (electron/filename.ts of v1.1.0, run in Node 22 on the same inputs).
 import Darwin
 import Foundation
 import Testing

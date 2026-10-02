@@ -1,4 +1,5 @@
-// Port of tests/naming.test.ts: one test per TypeScript test, same inputs and same expected names.
+// Port of tests/naming.test.ts (the Electron app; the file is in the tag v1.1.0): one test per TypeScript test, same
+// inputs and same expected names.
 // The Korean literals in this file are NFC (see `literalsInTheTestSourcesAreNFC`), so no nfc() wrapper is needed.
 import Testing
 @testable import HangeulFilenameFixerCore
@@ -91,7 +92,7 @@ struct NamingTests {
 			String(String.UnicodeScalarView(range.compactMap(Unicode.Scalar.init)))
 		}
 
-		// The three tables of electron/naming.ts, in code point order.
+		// The three tables of electron/naming.ts (v1.1.0), in code point order.
 		#expect(Exact(decomposedDisplayName(scalars(0x1100...0x1112))) == Exact("ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"))
 		#expect(Exact(decomposedDisplayName(scalars(0x1161...0x1175))) == Exact("ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"))
 		#expect(Exact(decomposedDisplayName(scalars(0x11A8...0x11C2))) == Exact("ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ"))

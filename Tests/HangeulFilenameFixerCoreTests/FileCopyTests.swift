@@ -1,4 +1,5 @@
-// Port of tests/filename.test.ts: one test per TypeScript test, same files and same expectations.
+// Port of tests/filename.test.ts (the Electron app; the file is in the tag v1.1.0): one test per TypeScript test, same
+// files and same expectations.
 // Where the TypeScript mocked fs.lstatSync and fs.readdirSync, these tests pass a FileSystemAccess with that one
 // operation replaced.
 import Darwin

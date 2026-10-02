@@ -1,5 +1,5 @@
 // The JavaScript details the TypeScript original depended on, with the results Node 22 gave for the same inputs
-// (the real electron/naming.ts and electron/filename.ts were run to get them).
+// (the real electron/naming.ts and electron/filename.ts of v1.1.0 were run to get them).
 import Testing
 @testable import HangeulFilenameFixerCore
 
