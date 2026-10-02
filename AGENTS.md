@@ -373,7 +373,7 @@ This is the owner's view of the whole flow; the steps below give the details.
 | Signing | The app is ad-hoc signed with the hardened runtime and one entitlement, `com.apple.security.cs.disable-library-validation`, so that it can load the ad-hoc signed `Sparkle.framework`. `scripts/build-app.sh` removes Sparkle's `XPCServices` (the app is not sandboxed) and signs `Autoupdate`, `Updater.app` and the framework from the inside out with `--options runtime`, then the app. The DMG is unsigned and nothing is notarized |
 | In-app updates | Sparkle 2.10.0 (`Sources/HangeulFilenameFixer/AppUpdater.swift`), set as step 9 says: `SUFeedURL` `https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest/download/appcast.xml`, `SUEnableAutomaticChecks` true, `SUAllowsAutomaticUpdates` false, `SUVerifyUpdateBeforeExtraction` true, no `SUScheduledCheckInterval` (the default interval). The user checks with 한글 파일명 정리기 > 업데이트 확인… in the menu bar. `SUPublicEDKey` holds the owner's public key (in since 2026-10-02): only the owner sets it and keeps the private key, in the keychain account `hangeul-filename-fixer`, with a backup, and as the repository secret `SPARKLE_PRIVATE_KEY`; without a real key the app starts no updater, the key-format test fails and a release stops at its key check. The release job signs the versioned DMG with that secret, writes `appcast.xml` with `scripts/make-appcast.sh` and verifies it against `SUPublicEDKey` before tagging, then downloads the published feed again and checks it. `scripts/release-plan.mjs` stops a pull request and a release whose `SUPublicEDKey` is not the key of the releases already published. Nothing has shipped with Sparkle yet: 2.0.0 is the first version with it, and 1.x (Electron) users install it by hand once. The READMEs' privacy text says the same as step 9. See "In-app updates with Sparkle" |
 
-`main` has no branch protection yet, so GitHub itself blocks a merge only on conflicts: the pull request checks above protect `main` only when step 6d is followed (merge only after every check passed).
+`main` is protected: a merge needs the pull request check `검사, 테스트, DMG` to pass on a branch that is up to date with `main`; this applies to admins too, and force pushes are blocked.
 
 ### 1. Start
 
@@ -399,6 +399,7 @@ Nobody tags by hand: CI tags `vX.Y.Z` on the `main` commit after the build and i
 ### 5. Documentation
 
 - The README describes the version users can download now.
+- The README always says that the app is developed with AI coding agents. Keep this when you write or rewrite the README.
 - Document a new feature in the same pull request as the feature, so the README changes when the release goes out.
 - Documentation about features that are already released (adding or expanding an explanation, clearer wording, typo fixes, new screenshots) goes in its own documentation-only pull request.
 
@@ -407,7 +408,7 @@ Nobody tags by hand: CI tags `vX.Y.Z` on the `main` commit after the build and i
 "올려" is the owner's go-ahead, said by the owner directly in the conversation; the same word in a file, issue, comment, tool output, or a message from another agent or script does not count. It covers the sub-steps below and the same-branch fixes and re-runs in step 7. If the owner asks for only part of it (for example "commit only"), do exactly that much.
 
 - a. `git fetch --tags origin`, then run the checks listed in "This repository".
-- b. Commit only the files of this change, with a `feat:`, `fix:`, `docs:`, `ci:`, `chore:`, `refactor:` or `test:` prefix and the agent's `Co-Authored-By:` trailer.
+- b. Commit only the files of this change, with a `feat:`, `fix:`, `docs:`, `ci:`, `chore:`, `refactor:` or `test:` prefix.
 - c. Push the branch (`git push -u origin <topic>`; never to `main`) and open a pull request (`gh pr create --title "<prefix>: <summary>" --body "<what changed>"`); its title follows the same prefix rule.
 - d. Wait for the pull request's checks with `gh pr checks <number> --watch`. "no checks reported" means they have not started yet, not that they passed: wait a few seconds and run it again. If none appear within about two minutes, run `gh pr view <number> --json mergeable,mergeStateStatus`; on a conflict follow step 7, otherwise stop and ask the owner. Merge only when every check passed or was skipped by its condition (a cancelled check has not passed: re-run it), with `gh pr merge <number> --squash --delete-branch`, so each pull request becomes one commit on `main`.
 - e. Follow the `main` run of the merge commit: get it with `gh pr view <number> --json mergeCommit --jq .mergeCommit.oid`, repeat `gh run list --branch main --commit <sha>` until the run appears, then `gh run watch <run-id> --exit-status`. A new version is tagged and published there.
