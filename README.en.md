@@ -35,7 +35,8 @@ The original file is never modified.
 Versioned files and release notes are on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases).
 The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
-**Requirements:** an Apple Silicon (M1 or later) Mac with macOS 12 Monterey or later. Intel Macs are not supported yet. The app UI is in Korean.
+**Requirements:** macOS 12 Monterey or later. It is a universal app for both Apple Silicon (M1 or later) and Intel Macs, and the DMG is about 2 MB. The app UI and menus are in Korean.
+So far 2.0.0 has only been run on one Apple Silicon Mac with macOS 27. It has not been run on an Intel Mac or on macOS 12 to 26 yet.
 
 This is a personal ad-hoc signed build and is not notarized by Apple.
 Because of that, macOS may show a warning saying Apple cannot verify that the app is free from malware.
@@ -97,6 +98,8 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
 <p align="left">
   <img src="images/file-select.png" alt="Select file screen" width="620" />
 </p>
+
+The window fits its content. It gets taller once a file is selected, and only its width can be resized.
 
 ### Choose the Output Name
 
@@ -168,16 +171,18 @@ Folders, `.app` bundles, and documents saved as macOS packages (for example pack
 
 ## Development
 
-Requirements: macOS, Node.js 22.12 or later, npm.
+Requirements: macOS with Xcode 26 or later (Swift 6.2 or later). The app is a Swift package with no external libraries and no Xcode project. A release build and the DMG need Xcode itself; the Command Line Tools alone cannot build the Intel half. Node.js is only used to run `scripts/release-plan.mjs` (no packages to install; it needs `gh`).
 
 | Command | Purpose | Description |
 | --- | --- | --- |
-| `npm ci` | Install dependencies | Install the exact versions from `package-lock.json`. |
-| `npm run dev:electron` | Run the app for development | Starts Vite and Electron together. Changes under `src/` update live; restart after changing `electron/`. |
-| `npm test` | Run tests | Unit tests for the naming rules and the copy and verification logic. |
-| `npm run typecheck` | Type-check | Checks the renderer, Electron and test code. |
-| `npm run build` | Check production build | Type-checks, then builds the React renderer and Electron main process into `dist/` and `dist-electron/`. |
-| `npm run dist` | Create DMG | Runs `build` first, then creates `release/hangeul-filename-fixer-<version>.dmg` for the build machine's architecture. |
+| `./scripts/test.sh` | Run tests | Unit tests for the naming rules, the copy and verification logic, the screen state and the window. Briefly creates two small HFS+ and exFAT disk images and removes them again. |
+| `./scripts/build-app.sh` | Build the app | Builds and ad-hoc signs `build/한글 파일명 정리기.app`, a debug build for this Mac's architecture. Run it with `open "build/한글 파일명 정리기.app"`. |
+| `./scripts/build-app.sh release` | Release build | Builds a universal (Apple Silicon + Intel) app in the same place. |
+| `./scripts/make-dmg.sh` | Create DMG | Builds a release app in `build/release/`, then creates `build/hangeul-filename-fixer-<version>.dmg` and its `.dmg.sha256`, and opens the image again to check the version and signature. |
+| `scripts/verify-dmg.sh <dmg> <version>` | Check DMG | Checks the version, signature, architectures (arm64 + x86_64) and minimum macOS of the app in the DMG. |
+| `node scripts/release-plan.mjs --check` | Check release | Shows what CI would do with the current version and release notes. Publishes nothing. |
+
+The filename rules are in [Sources/HangeulFilenameFixerCore/Naming.swift](Sources/HangeulFilenameFixerCore/Naming.swift), and copying and verification in [Sources/HangeulFilenameFixerCore/FileCopy.swift](Sources/HangeulFilenameFixerCore/FileCopy.swift). The app itself (AppKit + SwiftUI) is under `Sources/HangeulFilenameFixer/`.
 
 Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
 
@@ -185,7 +190,7 @@ Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architect
 
 This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
 
-When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The `CI` workflow also type-checks, tests and builds every pull request.
+When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The app version is the `CFBundleShortVersionString` in `Resources/Info.plist`. The `CI` workflow also runs the tests and builds and checks the DMG for every pull request.
 
 ## Installation Notes
 

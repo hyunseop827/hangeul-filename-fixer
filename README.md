@@ -30,7 +30,8 @@ Windows 컴퓨터나 학교 교수님한테는 이렇게 깨져 보일 수 있�
 
 버전별 파일과 릴리스 노트는 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 있습니다. 소스 코드는 이 저장소에 있습니다.
 
-**요구 사항:** Apple Silicon(M1 이상) Mac, macOS 12 Monterey 이상. Intel Mac은 아직 지원하지 않습니다. 앱 화면은 한국어입니다.
+**요구 사항:** macOS 12 Monterey 이상. Apple Silicon(M1 이상)과 Intel Mac을 모두 지원하는 유니버설 앱이고, DMG는 약 2MB입니다. 앱 화면과 메뉴는 한국어입니다.<br>
+2.0.0은 지금까지 macOS 27을 쓰는 Apple Silicon Mac 한 대에서만 실행해 봤습니다. Intel Mac과 macOS 12 ~ 26에서는 아직 실행해 보지 못했습니다.
 
 현재 DMG는 개인이 배포하는 거라서 Apple의 공증을 받지 못했습니다.<br>
 처음 실행할 때 macOS가 `Apple이 악성 코드가 없음을 확인할 수 없습니다`라는 경고를 띄울 수 있습니다.<br>
@@ -95,6 +96,8 @@ Gmail로 한글 파일명을 유지해서 보내야 한다면 **Chrome 대신 Sa
 <p align="left">
   <img src="images/file-select.png" alt="한글 파일명 정리기 파일 선택 화면" width="620" />
 </p>
+
+창 크기는 화면 내용에 맞춰집니다. 파일을 선택하면 그만큼 창이 길어지고, 폭만 직접 조절할 수 있습니다.
 
 ### 이름 선택 - 기존 이름을 유지하거나 새 이름을 입력합니다.
 
@@ -183,17 +186,17 @@ HWP도 파일 내용은 그대로 복사하고 사본의 이름만 바꾸므로 
 대략 흐름은 이렇습니다.
 
 1. 사용자가 파일 하나를 드래그하거나 선택합니다.
-2. Electron이 파일 경로를 받은 뒤, 폴더를 다시 읽어 디스크에 실제로 저장된 파일명을 확인합니다. 드래그로 들어온 경로는 원본과 상관없이 항상 분리형으로 들어오기 때문입니다.
-3. React 화면에서 현재 이름, Windows에서 깨져 보일 수 있는 이름, 변환 후 이름을 보여줍니다.
+2. 앱이 파일 경로를 받은 뒤, 폴더를 다시 읽어 디스크에 실제로 저장된 파일명을 확인합니다. 드래그하거나 선택 창에서 고른 경로는 실제로 저장된 이름과 다른 형태(NFC/분리형)로 들어올 수 있기 때문입니다.
+3. 화면에서 현재 이름, Windows에서 깨져 보일 수 있는 이름, 변환 후 이름을 보여줍니다.
 4. 사용자가 `기존 이름 유지` 또는 `이름 바꾸기`를 고릅니다.
-5. `NFC 사본 만들기`를 누르면 Electron이 원본 파일을 복사합니다. 같은 이름의 파일은 절대 덮어쓰지 않습니다.
+5. `NFC 사본 만들기`를 누르면 앱이 원본 파일을 복사합니다. 같은 이름의 파일은 절대 덮어쓰지 않습니다.
 6. 원본에 인터넷 다운로드 보안 표시(quarantine)가 있으면 사본에도 붙입니다.
 7. 앱이 생성된 사본의 실제 파일명을 다시 읽어서 NFC인지 확인합니다. NFC가 아니면 사본을 지우고 이유를 알려줍니다.
 8. 원본 파일은 그대로 두고, NFC 이름이 적용된 사본만 남습니다.
 
 ### 파일명 정리 기준
 
-규칙은 [electron/naming.ts](electron/naming.ts), 복사와 확인은 [electron/filename.ts](electron/filename.ts)에 있습니다.
+규칙은 [Sources/HangeulFilenameFixerCore/Naming.swift](Sources/HangeulFilenameFixerCore/Naming.swift), 복사와 확인은 [Sources/HangeulFilenameFixerCore/FileCopy.swift](Sources/HangeulFilenameFixerCore/FileCopy.swift)에 있습니다.
 
 현재 프로그램은 파일명을 이렇게 정리합니다.
 
@@ -218,71 +221,83 @@ Chrome + Gmail 웹 첨부 조합에서는 앱이 만든 사본이어도 파일�
 
 ### 요구 사항
 
-- macOS (Apple Silicon 기준으로 개발·테스트)
-- Node.js 22.12 이상, npm
+- macOS (Apple Silicon Mac에서 개발·테스트)
+- Xcode 26 이상 (Swift 6.2 이상). Xcode 프로젝트 없이 Swift Package Manager로 빌드하고, 외부 라이브러리는 쓰지 않습니다.
+- release 빌드와 DMG는 Xcode가 있어야 만들어집니다. 명령어 도구(Command Line Tools)만으로는 Intel용 절반을 만들지 못합니다.
+- Node.js는 `scripts/release-plan.mjs`를 돌릴 때만 씁니다. 설치할 패키지는 없고 `gh`가 필요합니다.
 
 ### 프로젝트 구조
 
 ```text
-electron/
-  main.ts       앱 창, 메뉴, 파일·폴더 선택 창, IPC 처리, Finder에서 보기
-  preload.ts    React 화면에 window.hangeulFilenameFixer API 연결 (샌드박스에서 실행)
-  api.ts        main, preload, 화면이 함께 쓰는 IPC 타입과 메시지
-  naming.ts     파일명 규칙 (NFC, Windows 금지 문자·예약 이름, 분리형 자모 미리보기)
-  filename.ts   복사 계획, 중복 이름 처리, 사본 복사, quarantine 유지, NFC 확인
+Package.swift                 Swift 패키지 정의 (macOS 12 이상, 외부 라이브러리 없음)
 
-src/
-  App.tsx       화면 상태, 드래그앤드롭, 버튼 동작, 미리보기 표시
-  styles.css    전체 UI 스타일
-  main.tsx      React 진입점
-  global.d.ts   window.hangeulFilenameFixer 타입 선언
+Sources/
+  HangeulFilenameFixerCore/   파일명 규칙과 복사 (화면 코드 없음)
+    Naming.swift              파일명 규칙 (NFC, Windows 금지 문자·예약 이름, 분리형 자모 미리보기)
+    FileCopy.swift            복사 계획, 중복 이름 처리, 사본 복사, quarantine 유지, NFC 확인
+    FileSystem.swift          파일명을 바이트 그대로 넘기는 시스템 호출 (열기, 폴더 읽기, 지우기)
+    PathText.swift            경로 자르기와 잇기
+    JavaScriptText.swift      NFC 변환, 공백 판단, 이름 비교 (1.x와 같은 결과가 나오게 맞춘 문자열 처리)
+    Messages.swift            한국어 오류 문구
+  HangeulFilenameFixer/       앱 (AppKit + SwiftUI)
+    HangeulFilenameFixerApp.swift   앱 시작과 종료, 창 열기
+    MainMenu.swift            한국어 메뉴 막대
+    MainWindowController.swift      창, 파일·폴더 선택 창, Finder에서 보기
+    WindowFit.swift           창 크기를 화면 내용에 맞추는 계산
+    NotificationObservation.swift   주인이 사라지면 스스로 해제되는 알림 관찰자
+    AppModel.swift            화면 상태, 미리보기, 사본 만들기 동작
+    FileIconType.swift        확장자별 파일 아이콘 고르기
+    Views/                    화면 (파일 놓는 곳, 선택한 파일 화면, 이름 입력 칸, 색과 크기)
+
+Resources/
+  Info.plist                  앱 정보와 버전
+  AppIcon.icns, AppIcon.png   앱 아이콘과 원본 이미지
+  ko.lproj/                   화면 문구(Localizable.strings)와 앱 이름(InfoPlist.strings)
+  FileIcons/                  파일 형식별 아이콘 (PDF. 원본 SVG는 source/)
+
+Tests/
+  HangeulFilenameFixerCoreTests/   파일명 규칙, 복사·확인, HFS+·exFAT 디스크 이미지 테스트
+  HangeulFilenameFixerTests/       화면 상태, 창, 메뉴, 문구 테스트
 
 scripts/
-  dev.mjs                 Vite 개발 서버와 Electron을 함께 실행
-  release-plan.mjs        새 버전을 릴리스할지 판단 (CI가 사용)
+  test.sh                 단위 테스트 실행
+  build-app.sh            앱 번들을 만들고 서명
+  make-dmg.sh             release 빌드를 DMG로 묶고 검사
+  toolchain.sh            빌드에 쓸 Xcode 고르기 (test.sh와 build-app.sh가 불러 씀)
   verify-dmg.sh           DMG 안 앱의 버전·서명·아키텍처 확인 (CI가 사용)
+  select-xcode.sh         CI 러너에서 Xcode 26.x 고르기 (CI가 사용)
+  release-plan.mjs        새 버전을 릴리스할지 판단 (CI가 사용)
+  make-file-icons.swift   파일 형식 아이콘을 SVG에서 PDF로 변환
 
 .github/
-  workflows/ci.yml        푸시·PR마다 타입 검사, 테스트, 빌드. main에서는 이어서 릴리스
+  workflows/ci.yml        main 푸시·PR마다 버전·릴리스 노트 확인, 테스트, DMG 빌드와 확인, 앱 실행 확인. main에서는 이어서 릴리스
   workflows/release.yml   새 버전이면 DMG 빌드, 태그, GitHub Release 공개
   release-notes.md        다음 버전의 릴리스 노트
 
-tests/          node:test 단위 테스트 (파일명 규칙, 복사·확인)
-
-public/file-icons/
-  파일 형식별 아이콘
-
 images/         README 이미지
 
-build/
-  icon.png                 개발 실행용 앱 아이콘
-  icon.icns                macOS 패키징용 앱 아이콘
-  entitlements.mac.plist   ad-hoc 서명에 필요한 권한
-  ko.lproj, en.lproj       앱 표시 이름 (한국어/영어)
-
 docs/           아키텍처, AI 활용 기록, 코드 리뷰 기록
-
-package.json    스크립트, 개발 의존성, electron-builder(DMG) 설정
 ```
 
-`dist/`, `dist-electron/`, `.test-dist/`, `release/`는 빌드 결과물이라 Git에 올리지 않습니다.
+`.build/`와 `build/`는 빌드 결과물이라 Git에 올리지 않습니다.
 
 ### 개발 명령어
 
 | 명령어 | 역할 | 설명 |
 | --- | --- | --- |
-| `npm ci` | 의존성 설치 | `package-lock.json`에 적힌 버전 그대로 설치합니다. |
-| `npm run dev:electron` | 실시간 앱 개발 실행 | Vite 개발 서버와 Electron 앱을 같이 실행합니다. `src/` 수정은 바로 반영되고, `electron/` 수정은 다시 실행해야 반영됩니다. |
-| `npm test` | 테스트 | 파일명 규칙과 복사·확인 로직의 단위 테스트를 실행합니다. |
-| `npm run typecheck` | 타입 검사 | 화면, Electron, 테스트 코드의 TypeScript 타입을 검사합니다. |
-| `npm run build` | 빌드 확인 | 타입 검사 후 React 화면과 Electron 코드를 `dist/`, `dist-electron/`으로 빌드합니다. 배포 파일은 만들지 않습니다. |
-| `npm run dist` | DMG 만들기 | `build`를 먼저 실행한 뒤 Electron Builder로 macOS 배포용 DMG를 만듭니다. |
+| `./scripts/test.sh` | 테스트 | 파일명 규칙, 복사·확인, 화면 상태와 창의 단위 테스트를 실행합니다. HFS+·exFAT 확인용 작은 디스크 이미지 두 개를 잠깐 만들었다가 지웁니다. |
+| `./scripts/build-app.sh` | 앱 만들기 | `build/한글 파일명 정리기.app`을 만들고 ad-hoc 서명합니다. 이 Mac의 아키텍처용 debug 빌드입니다. `open "build/한글 파일명 정리기.app"`으로 실행합니다. |
+| `./scripts/build-app.sh release` | release 빌드 | 같은 자리에 유니버설(Apple Silicon + Intel) 앱을 만듭니다. |
+| `./scripts/make-dmg.sh` | DMG 만들기 | release 빌드를 `build/release/`에 따로 만든 뒤 DMG로 묶고, 다시 열어 버전과 서명을 확인합니다. |
+| `scripts/verify-dmg.sh <DMG> <버전>` | DMG 확인 | DMG 안 앱의 버전, 서명, 아키텍처(arm64 + x86_64), 최소 macOS를 확인합니다. |
+| `node scripts/release-plan.mjs --check` | 릴리스 확인 | 지금 버전과 릴리스 노트로 CI가 무엇을 할지 미리 봅니다. 아무것도 올리지 않습니다. |
 
-**DMG 결과물은 `release/hangeul-filename-fixer-<버전>.dmg`에 만들어집니다.** 빌드한 Mac의 아키텍처(현재 Apple Silicon)용입니다.
+**DMG 결과물은 `build/hangeul-filename-fixer-<버전>.dmg`에 만들어집니다.** 체크섬 파일(`.dmg.sha256`)도 옆에 생깁니다. Apple Silicon과 Intel을 모두 담은 유니버설 빌드입니다.
 
 ### 배포
 
 `main`에 새 버전이 올라오면 GitHub Actions가 테스트를 거쳐 DMG를 만들고, 릴리스 노트와 함께 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 올립니다.<br>
+앱 버전은 `Resources/Info.plist`의 `CFBundleShortVersionString` 한 곳에 적습니다.<br>
 버전과 릴리스 노트를 준비하는 방법은 [AGENTS.md](AGENTS.md)에 있습니다. 진행 상황은 README 맨 위 CI 배지에서 볼 수 있습니다.
 
 ### 주의 사항
@@ -297,7 +312,7 @@ Apple 공증을 거치지 않았기 때문에 다른 Mac에서 처음 실행할 
 문제 정의, 실제 메일·제출 환경 테스트, 최종 결정은 사람이 맡고, AI는 구현·코드 리뷰·테스트·문서 작업을 도왔습니다.
 
 - [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md): AI를 어떻게 썼고 결과를 어떻게 확인했는지
-- [docs/CODE_REVIEW_2026-10-01.md](docs/CODE_REVIEW_2026-10-01.md): AI 다관점 코드 리뷰 결과
+- [docs/CODE_REVIEW_2026-10-01.md](docs/CODE_REVIEW_2026-10-01.md): 1.1.0 때의 AI 다관점 코드 리뷰 결과
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): 구조와 설계 배경
 - [AGENTS.md](AGENTS.md): AI 코딩 에이전트와 기여자를 위한 작업 안내
 
