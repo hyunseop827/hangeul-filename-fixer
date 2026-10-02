@@ -1,15 +1,18 @@
-# Releases the version in package.json. Called by ci.yml after the checks pass on a push to main; nothing else
+# Releases the version in Resources/Info.plist. Called by ci.yml after the checks pass on a push to main; nothing else
 # starts it, so every release comes from a tested commit on main and a person never pushes a tag.
 #
-# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg and checks it (scripts/verify-dmg.sh),
-#   tags the commit v<version> with .github/release-notes.md as the message, publishes the GitHub release with those
-#   notes and install notes, attaches the dmg and its checksum plus the same dmg under the fixed name
-#   hangeul-filename-fixer.dmg (+ .sha256), then downloads the fixed name back through
+# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg (scripts/make-dmg.sh) and checks it
+#   (scripts/verify-dmg.sh), tags the commit v<version> with .github/release-notes.md as the message, publishes the
+#   GitHub release with those notes and install notes, attaches the dmg and its checksum plus the same dmg under the
+#   fixed name hangeul-filename-fixer.dmg (+ .sha256), then downloads the fixed name back through
 #   https://github.com/<owner>/<repo>/releases/latest/download/hangeul-filename-fixer.dmg (the README link) and checks it.
 # - Version already released: nothing to do, unless the app changed since its tag without a new version, which fails.
 # - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind), and
 #   downloads a release that this commit already published again to check it.
 # scripts/release-plan.mjs makes these decisions; run it locally to see what CI will do.
+#
+# The app is ad-hoc signed (hardened runtime), the dmg itself is unsigned, nothing is notarized, and the release notes
+# say so.
 name: Release
 
 on:
@@ -25,7 +28,11 @@ defaults:
 jobs:
   release:
     name: DMG와 GitHub 릴리스
-    runs-on: macos-latest
+    # swift-tools-version 6.2 needs Xcode 26. macos-26 is the Apple Silicon image with Xcode 26.x installed side by
+    # side as /Applications/Xcode_<version>.app; scripts/select-xcode.sh picks the newest released 26.x and nothing
+    # newer (see there for why):
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md
+    runs-on: macos-26
     timeout-minutes: 30
     permissions:
       contents: write # version tag, gh release create / upload / edit
@@ -42,32 +49,35 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      # No dependency cache: a release build should not restore caches other workflows wrote.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
+      # Node.js is the one the runner image ships: the script uses only Node's built-in modules, so nothing is
+      # installed and no cache that another workflow wrote is restored into a release build.
       - name: 버전과 릴리스 상태 확인
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-plan.mjs
+        run: |
+          echo "node $(node --version)"
+          node scripts/release-plan.mjs
 
-      - name: 의존성 설치
+      # Shared with ci.yml. scripts/toolchain.sh then uses the Xcode chosen here.
+      - name: Xcode 선택 (26.x 중 최신 정식 버전)
         if: steps.plan.outputs.publish == 'true'
-        run: npm ci
+        run: ./scripts/select-xcode.sh
 
       - name: DMG 만들고 확인
         if: steps.plan.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
+          # CFBundleVersion of the released app: the number of this CI run, so a later release always has a higher one.
+          APP_BUILD: ${{ github.run_number }}
         run: |
-          npm run dist
-          scripts/verify-dmg.sh "release/hangeul-filename-fixer-$VERSION.dmg" "$VERSION"
-          cd release
+          ./scripts/make-dmg.sh "$VERSION"
+          scripts/verify-dmg.sh "build/hangeul-filename-fixer-$VERSION.dmg" "$VERSION" "$APP_BUILD"
+          cd build
           # The same dmg under a fixed name, with its own checksum line (shasum -c works on the downloaded file).
+          # make-dmg.sh wrote the checksum of the versioned name.
           cp "hangeul-filename-fixer-$VERSION.dmg" hangeul-filename-fixer.dmg
-          shasum -a 256 "hangeul-filename-fixer-$VERSION.dmg" > "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          shasum -a 256 -c "hangeul-filename-fixer-$VERSION.dmg.sha256"
           shasum -a 256 hangeul-filename-fixer.dmg > hangeul-filename-fixer.dmg.sha256
           cat "hangeul-filename-fixer-$VERSION.dmg.sha256"
 
@@ -95,17 +105,21 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           RELEASE_STATE: ${{ steps.plan.outputs.release_state }}
         run: |
-          dmg="release/hangeul-filename-fixer-$VERSION.dmg"
-          latest="release/hangeul-filename-fixer.dmg"
+          dmg="build/hangeul-filename-fixer-$VERSION.dmg"
+          latest="build/hangeul-filename-fixer.dmg"
+          # What the install notes promise is what scripts/verify-dmg.sh checked: a universal app whose two halves
+          # are built for the macOS in LSMinimumSystemVersion (12.0 is written "macOS 12").
+          min_macos="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Resources/Info.plist)"
+          min_macos="${min_macos%.0}"
           notes="$RUNNER_TEMP/release-notes.md"
           {
             cat "$RUNNER_TEMP/release-body.md"
             echo
             echo "## 설치"
             echo
-            echo "\`${dmg##*/}\`을 받아 열고 앱을 \`응용 프로그램\` 폴더로 옮기세요. Apple Silicon(M1 이상) Mac, macOS 12 이상."
+            echo "\`${dmg##*/}\`을 받아 열고 앱을 \`응용 프로그램\` 폴더로 옮기세요. Apple Silicon(M1 이상)과 Intel Mac 모두에서 실행되는 유니버설 앱입니다. macOS $min_macos 이상."
             echo
-            echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 \`시스템 설정\` → \`개인정보 보호 및 보안\` → \`그래도 열기\`를 누르세요. 자세한 방법은 [README](https://github.com/$GH_REPO#처음-여는-방법)에 있습니다."
+            echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 [README의 처음 여는 방법](https://github.com/$GH_REPO#처음-여는-방법)을 따라 하세요. macOS 버전마다 방법이 다릅니다."
             echo
             echo "SHA-256 (\`${dmg##*/}\`): \`$(cut -d' ' -f1 < "$dmg.sha256")\`"
             echo
@@ -130,7 +144,7 @@ jobs:
           TAG: ${{ steps.plan.outputs.tag }}
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
-          built="$GITHUB_WORKSPACE/release/hangeul-filename-fixer-$VERSION.dmg" # missing on a re-run that built nothing
+          built="$GITHUB_WORKSPACE/build/hangeul-filename-fixer-$VERSION.dmg" # missing on a re-run that built nothing
           dir="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-verify.XXXXXX")"
           trap 'rm -rf -- "$dir"' EXIT
           cd "$dir"

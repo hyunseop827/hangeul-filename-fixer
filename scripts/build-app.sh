@@ -3,9 +3,10 @@
 #
 #   ./scripts/build-app.sh [debug|release]      → build/한글 파일명 정리기.app (ad-hoc signed, hardened runtime)
 #
-# debug (the default) is built for this Mac's architecture only and also contains the development hooks (`#if DEBUG`);
-# release is universal (arm64 + x86_64) and leaves them out. A release build needs Xcode: the Command Line Tools
-# alone cannot link the x86_64 half (their Swift compatibility libraries are Apple Silicon only).
+# debug (the default) is built for this Mac's architecture only and without optimization; release is universal
+# (arm64 + x86_64) and optimized. The sources are the same for both: there is no debug-only code. A release build
+# needs Xcode: the Command Line Tools alone cannot link the x86_64 half (their Swift compatibility libraries are
+# Apple Silicon only).
 #
 # Optional environment:
 #   APP_VERSION        CFBundleShortVersionString of the bundle (default: the value in Resources/Info.plist)
@@ -50,9 +51,16 @@ normalized_version() {
 build_version() {
 	vtool -show-build "$1" | awk '$1 == "minos" { minos = $2 } $1 == "sdk" { sdk = $2 } END { print minos, sdk }'
 }
+# The slices are collected in a temporary folder that is removed however the script ends: at the end, on a failed step,
+# and on Ctrl-C or a kill (INT and TERM become an ordinary exit, so the EXIT trap runs).
 SLICES_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hangeul-filename-fixer-build.XXXXXX")"
 trap 'rm -rf "$SLICES_DIR"' EXIT
+trap 'exit 130' INT TERM
 # Builds the product for one architecture ("" = this Mac's) and leaves a checked copy in $SLICES_DIR.
+# Always called in a subshell, `(build_slice …)`: when a command fails inside a function (set -e), or a signal arrives
+# while one runs, zsh leaves without running the EXIT trap, and the temporary folder would stay behind. A failing
+# subshell is an ordinary failed command of the script itself, which does run the trap. The function only writes files
+# into $SLICES_DIR, so nothing is lost by the subshell.
 build_slice() {
 	local arch="$1" triple=() bin_dir slice versions minos sdk
 	if [[ -n "$arch" ]]; then triple=(--triple "$arch-apple-macosx"); fi
@@ -95,10 +103,10 @@ build_slice() {
 # Each slice is copied out before the next build: the Swift Build engine puts every architecture's product at the same
 # path (.build/out/Products/Release), so the second build replaces the first.
 if [[ "$CONF" == release ]]; then
-	build_slice arm64
-	build_slice x86_64
+	(build_slice arm64)
+	(build_slice x86_64)
 else
-	build_slice ""
+	(build_slice "")
 fi
 ICNS="$P/Resources/AppIcon.icns"
 [[ -f "$ICNS" ]] || { print -u2 "Resources/AppIcon.icns 가 없습니다."; exit 1; }

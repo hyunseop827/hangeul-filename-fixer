@@ -1,9 +1,9 @@
 // Decides what the release job (.github/workflows/release.yml) does for the checked-out commit.
-// Reads the version from package.json and the notes from .github/release-notes.md, compares them with the version
-// tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT.
-//   node scripts/release-plan.mjs --check   only validates (CI runs this on every push and pull request, so a
-//                                           missing version bump or notes header shows up before the merge)
-// Run it locally (needs gh) to see what CI would do with the current commit.
+// Reads the version from Resources/Info.plist (CFBundleShortVersionString) and the notes from .github/release-notes.md,
+// compares them with the version tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT.
+//   node scripts/release-plan.mjs --check   only validates (CI runs this on every push to main and every pull request,
+//                                           so a missing version bump or notes header shows up before the merge)
+// Run it locally, from the repository root on a Mac (needs gh), to see what CI would do with the current commit.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,18 +12,29 @@ const repository = process.env.GITHUB_REPOSITORY ?? "hyunseop827/hangeul-filenam
 const inCi = process.env.GITHUB_ACTIONS === "true";
 const checkOnly = process.argv.includes("--check");
 const notesPath = ".github/release-notes.md";
-// Files that end up in the DMG. Changing them after a release needs a new version; tests, scripts and docs do not.
+const infoPlistPath = "Resources/Info.plist";
+// Everything that changes what ends up in the DMG. Changing it after a release needs a new version.
+//   Sources, Package.swift      the code and how it is compiled (targets, minimum macOS)
+//   Package.resolved            the exact versions of dependencies (there are none yet, so the file does not exist)
+//   Resources                   Info.plist, the icon, the Korean texts and the file-type icons, copied into the bundle
+//   scripts/build-app.sh        builds the two halves, assembles the bundle and signs it
+//   scripts/toolchain.sh        the compiler and the flags build-app.sh builds with
+//   scripts/make-dmg.sh         the disk image: its layout, volume name and format
+// Not here, because the DMG stays the same: Tests, docs, .github (workflows, release notes), and the scripts that only
+// check or prepare (test.sh, verify-dmg.sh, release-plan.mjs, make-file-icons.swift, whose output is the PDFs
+// committed in Resources).
+// Left out on purpose although it decides which Xcode (and so which SDK) CI builds with: scripts/select-xcode.sh.
+// Like the workflows, it is part of the environment a release is built in, and that environment also changes
+// without any commit (a runner image gains a newer Xcode 26.x). A change of that script alone does not call for a
+// new version; raising its `major` is tried on a pull request and ships with the next version.
 const appInputs = [
-  "electron",
-  "src",
-  "public",
-  "build",
-  "index.html",
-  "package.json",
-  "package-lock.json",
-  "vite.config.ts",
-  "tsconfig.json",
-  "tsconfig.electron.json"
+  "Sources",
+  "Resources",
+  "Package.swift",
+  "Package.resolved",
+  "scripts/build-app.sh",
+  "scripts/make-dmg.sh",
+  "scripts/toolchain.sh"
 ];
 const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
@@ -46,14 +57,23 @@ function isNewer(a, b) {
   return false;
 }
 
-const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-const packageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
-const version = packageJson.version;
-if (!semver.test(version)) {
-  fail(`package.json 의 version 형식이 잘못되었습니다: '${version}' (예: 1.2.0)`);
+// The same reader the build scripts use (scripts/build-app.sh, scripts/make-dmg.sh).
+function plistValue(key) {
+  const result = spawnSync("/usr/libexec/PlistBuddy", ["-c", `Print :${key}`, infoPlistPath], { encoding: "utf8" });
+  if (result.status !== 0) {
+    fail(`${infoPlistPath} 에서 ${key} 를 읽지 못했습니다.`);
+  }
+  return result.stdout.trim();
 }
-if (packageLock.version !== version || packageLock.packages?.[""]?.version !== version) {
-  fail(`package-lock.json 의 버전이 package.json(${version})과 다릅니다. 'npm version ${version} --no-git-tag-version --allow-same-version'으로 맞추세요.`);
+
+const version = plistValue("CFBundleShortVersionString");
+if (!semver.test(version)) {
+  fail(`${infoPlistPath} 의 CFBundleShortVersionString 형식이 잘못되었습니다: '${version}' (예: 1.2.0)`);
+}
+// The build number. A release build gets the CI run number instead (APP_BUILD in release.yml), also an integer.
+const build = plistValue("CFBundleVersion");
+if (!/^[0-9]+$/.test(build)) {
+  fail(`${infoPlistPath} 의 CFBundleVersion 은 정수여야 합니다 (지금: '${build}').`);
 }
 const tag = `v${version}`;
 
@@ -99,7 +119,7 @@ const releases = execFileSync(
 for (const known of new Set([...tags, ...releases.map((release) => release.name)])) {
   const knownVersion = known.slice(1);
   if (known.startsWith("v") && semver.test(knownVersion) && isNewer(knownVersion, version)) {
-    fail(`${tag} 가 이미 있는 ${known} 보다 낮습니다. package.json 의 버전을 올리세요.`);
+    fail(`${tag} 가 이미 있는 ${known} 보다 낮습니다. ${infoPlistPath} 의 버전을 올리세요.`);
   }
 }
 
@@ -115,7 +135,7 @@ if (releaseState === "published") {
   }
   const diff = spawnSync("git", ["diff", "--quiet", tagCommit, head, "--", ...appInputs]);
   if (diff.status === 1) {
-    fail(`${tag} 릴리스 뒤에 앱이 바뀌었습니다. package.json 의 버전을 올리고 ${notesPath} 를 새 버전으로 고치세요.`);
+    fail(`${tag} 릴리스 뒤에 앱이 바뀌었습니다. ${infoPlistPath} 의 버전을 올리고 ${notesPath} 를 새 버전으로 고치세요.`);
   }
   if (diff.status !== 0) {
     fail(`${tag} 와 지금 커밋을 비교하지 못했습니다.`);
