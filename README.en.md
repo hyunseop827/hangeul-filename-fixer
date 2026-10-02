@@ -35,7 +35,8 @@ The original file is never modified.
 Versioned files and release notes are on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases).
 The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
-**Requirements:** an Apple Silicon (M1 or later) Mac with macOS 12 Monterey or later. Intel Macs are not supported yet. The app UI is in Korean.
+**Requirements:** macOS 12 Monterey or later. It is a universal app for both Apple Silicon (M1 or later) and Intel Macs, and the DMG is about 3 MB. The app UI and menus are in Korean.
+Before the in-app updater was added, 2.0.0 was used by hand on one Apple Silicon Mac with macOS 27, and the automated checks (CI, macOS 26) started it as an Apple Silicon app and as an Intel app (under Rosetta). The 2.0.0 build that includes the updater has not been run yet. It has also not been run on a real Intel Mac or on macOS 12 to 25 yet.
 
 This is a personal ad-hoc signed build and is not notarized by Apple.
 Because of that, macOS may show a warning saying Apple cannot verify that the app is free from malware.
@@ -64,6 +65,24 @@ open "/Applications/한글 파일명 정리기.app"
 ```
 
 This only removes the macOS quarantine flag from the downloaded app. Run it only if you trust the source code and the release file.
+
+### Updating
+
+From 2.0.0 on, the app updates from inside the app. You do not need to download a new DMG.
+
+- Choose `한글 파일명 정리기` → `업데이트 확인…` (Check for Updates…) in the menu bar to check right away. While it is running, the app also checks once a day on its own.
+- When there is a newer version, it shows what changed and asks. Only when you choose `업데이트 설치` (Install Update) does it download the new version, verify its signature, replace the app and reopen it. It never installs without asking.
+- Keep the app in Applications. An app opened inside the DMG, or from where it was downloaded, cannot update itself.
+- **If you use 1.x (up to 1.1.0)**, the app has no updater. Download the 2.0.0 DMG and replace the app in Applications by hand once; after that, update from the app.
+
+2.0.0 is the first version with the updater, so the first real update will be the one to the next version.
+
+### Privacy
+
+- No accounts and no usage tracking.
+- The only thing the app uses the internet for is the update check. Once a day while it is running, and when you choose `업데이트 확인…`, it reads the latest release's list of updates (`appcast.xml`) from GitHub. Nothing about your files, such as their names or contents, is sent.
+- The new version (a DMG) is downloaded from GitHub only when you choose to install it, and it is checked against the signing key (EdDSA) inside the app before it is opened. Updates are handled by [Sparkle](https://sparkle-project.org).
+- Sparkle keeps a little state in the app's preferences (when it last checked, a skipped version, window positions).
 
 ## How It Works
 
@@ -97,6 +116,8 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
 <p align="left">
   <img src="images/file-select.png" alt="Select file screen" width="620" />
 </p>
+
+The window fits its content. It gets taller once a file is selected, and only its width can be resized.
 
 ### Choose the Output Name
 
@@ -168,24 +189,28 @@ Folders, `.app` bundles, and documents saved as macOS packages (for example pack
 
 ## Development
 
-Requirements: macOS, Node.js 22.12 or later, npm.
+Requirements: macOS with Xcode 26 or later (Swift 6.2 or later). The app is a Swift package without an Xcode project. Its only external library is [Sparkle](https://github.com/sparkle-project/Sparkle) 2.10.0, for updates, which Swift Package Manager downloads on the first build. A release build and the DMG need Xcode itself; the Command Line Tools alone cannot build the Intel half. Node.js is only used to run `scripts/release-plan.mjs` (no packages to install; it needs `gh`).
 
 | Command | Purpose | Description |
 | --- | --- | --- |
-| `npm ci` | Install dependencies | Install the exact versions from `package-lock.json`. |
-| `npm run dev:electron` | Run the app for development | Starts Vite and Electron together. Changes under `src/` update live; restart after changing `electron/`. |
-| `npm test` | Run tests | Unit tests for the naming rules and the copy and verification logic. |
-| `npm run typecheck` | Type-check | Checks the renderer, Electron and test code. |
-| `npm run build` | Check production build | Type-checks, then builds the React renderer and Electron main process into `dist/` and `dist-electron/`. |
-| `npm run dist` | Create DMG | Runs `build` first, then creates `release/hangeul-filename-fixer-<version>.dmg` for the build machine's architecture. |
+| `./scripts/test.sh` | Run tests | Unit tests for the naming rules, the copy and verification logic, the screen state, the window and the update settings. Briefly creates two small HFS+ and exFAT disk images and removes them again. |
+| `./scripts/build-app.sh` | Build the app | Builds `build/한글 파일명 정리기.app`, a debug build for this Mac's architecture, embeds Sparkle and ad-hoc signs it. Run it with `open "build/한글 파일명 정리기.app"`. |
+| `./scripts/build-app.sh release` | Release build | Builds a universal (Apple Silicon + Intel) app in the same place. |
+| `./scripts/make-dmg.sh` | Create DMG | Builds a release app in `build/release/`, then creates `build/hangeul-filename-fixer-<version>.dmg` and its `.dmg.sha256`, and opens the image again to check the version and signature. |
+| `scripts/verify-dmg.sh <dmg> <version>` | Check DMG | Checks the version, signature, architectures (arm64 + x86_64) and minimum macOS of the app in the DMG, and Sparkle and the update settings. |
+| `node scripts/release-plan.mjs --check` | Check release | Shows what CI would do with the current version and release notes. Publishes nothing. |
 
-Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md) (Korean). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
+The filename rules are in [Sources/HangeulFilenameFixerCore/Naming.swift](Sources/HangeulFilenameFixerCore/Naming.swift), and copying and verification in [Sources/HangeulFilenameFixerCore/FileCopy.swift](Sources/HangeulFilenameFixerCore/FileCopy.swift). The app itself (AppKit + SwiftUI) is under `Sources/HangeulFilenameFixer/`; `AppUpdater.swift` there is the update check and the app's only network code. Two scripts are used only by the release: `scripts/make-appcast.sh` signs the DMG and writes the update feed (`appcast.xml`), and `scripts/ed25519-verify.swift` checks that signature against the app's public key. `scripts/check-release-tools.sh` runs both without a signing key, on every pull request.
+
+Only the repository owner creates and keeps the key that signs updates. The public key is in `Resources/Info.plist`. If a placeholder (`PASTE_PUBLIC_KEY_FROM_generate_keys`) stands there instead of a real key, one test fails on purpose and an app built that way does not check for updates (its `업데이트 확인…` menu item is disabled). See "In-app updates with Sparkle" in [AGENTS.md](AGENTS.md).
+
+Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
+
+When a new version reaches `main`, GitHub Actions tests it, builds the DMG, signs it for the updater and publishes it with release notes and the update feed (`appcast.xml`) on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases); installed copies learn about the new version from that feed. The app version is the `CFBundleShortVersionString` in `Resources/Info.plist`. The `CI` workflow also runs the tests and builds and checks the DMG for every pull request.
 
 ## Built with AI
 
-This project was built with the help of AI coding tools. A person defined the problem, tested real mail and upload flows, and made the final decisions; AI helped with implementation, code review, tests, and documentation. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
-
-When a new version reaches `main`, GitHub Actions tests it, builds the DMG and publishes it with release notes on [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases). The `CI` workflow also type-checks, tests and builds every pull request.
+This app is developed with AI coding agents under the direction of its owner, Hyunseop Kim. The tools used so far are OpenAI Codex (v1.0.0) and Claude Code (Claude Opus 5.5 and Claude Fable 5.1). The owner defines the problem, tests real mail and upload flows, and makes the final decisions, including releases; the agents follow [AGENTS.md](AGENTS.md) for implementation, tests, and documentation. How AI was used and how its results were checked is in [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) (Korean).
 
 ## Installation Notes
 
@@ -202,6 +227,8 @@ Non-commercial license.
 - Commercial use, such as selling it, charging for it, or putting it in a paid product or service, needs permission.
 
 See [LICENSE](LICENSE).
+
+The app includes the open-source library [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT license) for updates. The license notices of Sparkle and of the code it includes are in [Resources/ThirdPartyNotices.txt](Resources/ThirdPartyNotices.txt), and the same file is inside the app bundle.
 
 ## Version History
 

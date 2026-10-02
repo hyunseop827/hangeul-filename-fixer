@@ -1,20 +1,22 @@
-# dependencies
-node_modules/
+# SwiftPM / Xcode build output
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
 
-# build outputs
-dist/
-dist-electron/
-.test-dist/
-release/
-.vite/
+# App bundle and disk image made by scripts/build-app.sh and scripts/make-dmg.sh:
+# build/한글 파일명 정리기.app, build/release/, build/hangeul-filename-fixer-X.Y.Z.dmg and its checksum.
+# (Resources/AppIcon.icns is tracked; the iconset made from Resources/AppIcon.png goes to build/AppIcon.iconset.)
+/build/
+
+# Release outputs and signing material: a copy made anywhere else must not be committed either.
 *.dmg
-*.blockmap
-latest*.yml
-builder-debug.yml
-
-# icon sources (build/icon.icns is made from these with iconutil)
-build/AppIcon.iconset/
-build/icon-source.png
+*.dmg.sha256
+*.p12
+*.p8
+*.cer
+*.provisionprofile
 
 # personal AI assistant settings
 .claude/settings.local.json
@@ -33,7 +35,4 @@ local-custom/
 
 # logs and OS files
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 .DS_Store

@@ -1,6 +1,16 @@
-# Checks every push to main and every pull request: release readiness (version, release notes), type check, tests,
-# and the real DMG, packaged and inspected. On main, a passing run then calls release.yml, which releases the version
-# in package.json if it is new (see there).
+# Checks every push to main and every pull request: release readiness (version, release notes, the update key of the
+# releases so far), the tools only a release runs (without a key), the unit tests on both architectures (arm64, and
+# x86_64 through Rosetta), and the real DMG: built, inspected, and its app started once per architecture. On main, a
+# passing run then calls release.yml, which releases the version in Resources/Info.plist if it is new (see there).
+#
+# When the unit tests fail, the steps after them still run (the x86_64 tests, the DMG, its inspection and the launch
+# check), and the job fails all the same. That is for a tree whose Resources/Info.plist holds a placeholder instead of the
+# update key: the key-format test fails then, on purpose, and the app built in that state must still be shown to
+# build, pass the inspection and start. A failed job never reaches the release job below.
+#
+# The only repository secret these workflows use is SPARKLE_PRIVATE_KEY (the EdDSA key that signs each release's dmg
+# for the in-app updater; see release.yml). It is handed to release.yml alone, by name, in the `release` job. That job
+# runs only for pushes to main, so pull requests never see the key and need none: the `check` job uses no secrets.
 name: CI
 
 on:
@@ -23,8 +33,12 @@ defaults:
 jobs:
   check:
     name: 검사, 테스트, DMG
-    runs-on: macos-latest
-    timeout-minutes: 30
+    # swift-tools-version 6.2 needs Xcode 26. macos-26 is the Apple Silicon image with Xcode 26.x installed side by
+    # side as /Applications/Xcode_<version>.app; scripts/select-xcode.sh picks the newest released 26.x and nothing
+    # newer (see there for why):
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md
+    runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - name: 체크아웃 (태그 포함)
         uses: actions/checkout@v7
@@ -33,34 +47,163 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
+      # Shared with release.yml. scripts/toolchain.sh then uses the Xcode chosen here.
+      - name: Xcode 선택 (26.x 중 최신 정식 버전)
+        run: ./scripts/select-xcode.sh
 
-      - name: 의존성 설치
-        run: npm ci
-
-      # The same decision the release job makes, without publishing: a missing version bump, a stale
-      # .github/release-notes.md header or a lockfile out of step fails here, before the merge.
+      # The same decision the release job makes, without publishing: a missing version bump or a stale
+      # .github/release-notes.md header fails here, before the merge.
+      # Node.js is the one the runner image ships: the script uses only Node's built-in modules (there are no npm
+      # packages and no lockfile any more), so there is nothing to install, pin or cache.
       - name: 버전과 릴리스 노트 확인
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-plan.mjs --check
-
-      - name: 타입 검사
-        run: npm run typecheck
-
-      - name: 테스트
-        run: npm test
-
-      - name: DMG 만들기 (빌드 포함)
-        run: npm run dist
-
-      - name: DMG 확인
         run: |
-          version="$(node -p "require('./package.json').version")"
-          scripts/verify-dmg.sh "release/hangeul-filename-fixer-$version.dmg" "$version"
+          echo "node $(node --version)"
+          node scripts/release-plan.mjs --check
+
+      # scripts/make-appcast.sh and scripts/ed25519-verify.swift run for real only in a release on main. Here they
+      # are run without a key: published RFC 8032 test vectors and a stand-in for Sparkle's sign_update. A mistake in
+      # them shows on the pull request instead of in the release that needs them.
+      - name: 릴리스 도구 확인 (키 없이)
+        run: ./scripts/check-release-tools.sh
+
+      # CI is set on runners, so the tests that need real HFS+ and exFAT volumes (disk images made with hdiutil)
+      # must run; they cannot be skipped here.
+      - name: 테스트
+        id: test
+        run: ./scripts/test.sh
+
+      # The Intel half of the app cannot run natively on this Apple Silicon runner, so the same tests are built and
+      # run as x86_64 under Rosetta: a shell started with `arch -x86_64` runs everything below it (swift, the tests,
+      # hdiutil) as x86_64.
+      # From here on the steps also run when the tests above failed (see the top of this file), but not when the
+      # tests never started because an earlier step failed, and not when the run was cancelled.
+      - name: 테스트 (x86_64, Rosetta)
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2> /dev/null; then
+            echo "Rosetta가 없어 설치합니다."
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+          # `|| true`: when x86_64 still cannot be started, the message below is the one to show, not arch's own.
+          machine="$(arch -x86_64 /bin/zsh -c 'uname -m' 2> /dev/null || true)"
+          if [[ "$machine" != x86_64 ]]; then
+            echo "::error::arch -x86_64 로 실행했는데 아키텍처가 '${machine:-실행되지 않음}' 입니다. Rosetta를 쓸 수 없습니다."
+            exit 1
+          fi
+          # Same toolchain choice as scripts/test.sh makes.
+          swift_archs="$(/bin/zsh -c 'source scripts/toolchain.sh && lipo -archs "$(xcrun --find swift)"')"
+          if [[ " $swift_archs " != *" x86_64 "* ]]; then
+            echo "::error::선택된 Xcode의 Swift 도구가 x86_64로 실행되지 않습니다 ($swift_archs). x86_64 테스트를 돌릴 수 없습니다."
+            exit 1
+          fi
+          arch -x86_64 /bin/zsh ./scripts/test.sh
+
+      - name: DMG 만들기 (release 빌드 포함)
+        id: dmg
+        if: ${{ !cancelled() && steps.test.outcome != 'skipped' }}
+        run: ./scripts/make-dmg.sh
+
+      # Only with a DMG to look at.
+      - name: DMG 확인
+        if: ${{ !cancelled() && steps.dmg.outcome == 'success' }}
+        env:
+          DMG: ${{ steps.dmg.outputs.dmg }}
+          VERSION: ${{ steps.dmg.outputs.version }}
+        run: scripts/verify-dmg.sh "$DMG" "$VERSION"
+
+      # The app as a user gets it (copied out of the disk image) must start as arm64 and as x86_64 (Rosetta): each
+      # process has to put an ordinary window on screen and still be running a few seconds later. A missing library or
+      # a crash at launch ends the process. An app that hangs, shows only an alert, or whose launch code raises an
+      # exception (AppKit catches it and carries on) stays alive, but its window never appears.
+      - name: 실행 확인 (arm64, x86_64)
+        if: ${{ !cancelled() && steps.dmg.outcome == 'success' }}
+        env:
+          DMG: ${{ steps.dmg.outputs.dmg }}
+        run: |
+          work="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-launch.XXXXXX")"
+          mount_dir="$work/mount"
+          mkdir "$mount_dir"
+          pid=""
+          cleanup() {
+            if [[ -n "$pid" ]]; then kill "$pid" 2> /dev/null || true; fi
+            # Fails quietly when the image is detached already (the usual case).
+            hdiutil detach -quiet -force "$mount_dir" 2> /dev/null || true
+            rm -rf -- "$work"
+          }
+          trap cleanup EXIT
+          if ! hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" "$DMG"; then
+            echo "::error::$DMG 를 열지 못했습니다(hdiutil attach)."
+            exit 1
+          fi
+          ditto "$mount_dir/한글 파일명 정리기.app" "$work/한글 파일명 정리기.app"
+          # hdiutil sometimes answers "Resource busy" for a moment: try, wait, try again, then force (read-only mount).
+          hdiutil detach -quiet "$mount_dir" \
+            || { sleep 2; hdiutil detach -quiet "$mount_dir"; } \
+            || hdiutil detach -quiet -force "$mount_dir"
+          binary="$work/한글 파일명 정리기.app/Contents/MacOS/HangeulFilenameFixer"
+          # Prints how many ordinary (layer 0) windows of a process are on screen. An alert or a menu is on another
+          # layer. Only owner and layer are read from the window list, which needs no permission.
+          # With "all" instead of a process ID: every window on screen, whoever owns it (to tell "the app showed
+          # nothing" from "this session shows no windows at all").
+          window_count() {
+            osascript -l JavaScript -e '
+              ObjC.import("CoreGraphics");
+              function run(argv) {
+                const options = $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;
+                const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(options, 0)));
+                if (argv[0] === "all") return String(list.length);
+                const pid = Number(argv[0]);
+                return String(list.filter((w) => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0).length);
+              }' "$1"
+          }
+          limit=30
+          for architecture in arm64 x86_64; do
+            log="$work/launch-$architecture.log"
+            query_log="$work/window-query-$architecture.log"
+            # arch replaces itself with the program, so $! is the app's process.
+            arch "-$architecture" "$binary" > "$log" 2>&1 &
+            pid=$!
+            windows=0
+            waited=0
+            while (( waited < limit )) && kill -0 "$pid" 2> /dev/null; do
+              sleep 1
+              waited=$((waited + 1))
+              windows="$(window_count "$pid" 2> "$query_log" || true)"
+              if [[ ! "$windows" =~ ^[0-9]+$ ]]; then windows=0; fi
+              if (( windows > 0 )); then break; fi
+            done
+            # The window is up: the app must also survive the next few seconds.
+            if (( windows > 0 )); then sleep 3; fi
+            if ! kill -0 "$pid" 2> /dev/null; then
+              code=0
+              wait "$pid" || code=$?
+              pid=""
+              if (( windows > 0 )); then
+                echo "::error::앱이 $architecture 로 실행되어 창을 띄운 뒤 3초 안에 끝났습니다 (종료 코드 $code)."
+              else
+                echo "::error::앱이 $architecture 로 실행된 뒤 창을 띄우기 전에 끝났습니다 (종료 코드 $code)."
+              fi
+              cat "$log"
+              exit 1
+            fi
+            if (( windows == 0 )); then
+              echo "::error::앱이 $architecture 로 실행되었지만 ${limit}초 안에 창이 뜨지 않았습니다."
+              cat "$log"
+              echo "이 세션의 화면에 있는 창(모든 앱): $(window_count all 2>&1 || true)개"
+              if [[ -s "$query_log" ]]; then
+                echo "창 목록을 읽는 중 난 오류(osascript):"
+                cat "$query_log"
+              fi
+              exit 1
+            fi
+            echo "OK  $architecture: ${waited}초 만에 창 ${windows}개, 그 뒤 3초 동안 실행 중 (pid $pid)"
+            cat "$log"
+            kill "$pid"
+            wait "$pid" 2> /dev/null || true
+            pid=""
+          done
 
   release:
     name: 릴리스
@@ -69,3 +212,7 @@ jobs:
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
+    # By name, not `secrets: inherit`: release.yml gets this one secret and no other the repository may gain later.
+    # Empty when the owner has not registered it; release.yml then stops a run that would publish, with instructions.
+    secrets:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>ko</string>
+	<!-- The app's only language: Korean, from ko.lproj (Localizable, InfoPlist), which scripts/build-app.sh copies from
+	     Resources into the bundle. With no other .lproj the app and every text the system supplies (menu items AppKit
+	     adds, open panels, the text field's context menu) are Korean whatever the system language is. -->
+	<key>CFBundleLocalizations</key><array><string>ko</string></array>
+	<key>CFBundleExecutable</key><string>HangeulFilenameFixer</string>
+	<key>CFBundleIdentifier</key><string>app.hangeul-filename-fixer.desktop</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>한글 파일명 정리기</string>
+	<key>CFBundleDisplayName</key><string>한글 파일명 정리기</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleIconFile</key><string>AppIcon</string>
+	<!-- The app's version: the single source. scripts/release-plan.mjs reads it to decide whether to release.
+	     CFBundleVersion is an integer. -->
+	<key>CFBundleShortVersionString</key><string>2.0.0</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>LSMinimumSystemVersion</key><string>12.0</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+	<key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSHumanReadableCopyright</key><string>Copyright © 2026 Hyunseop Kim</string>
+	<!-- Updates (Sources/HangeulFilenameFixer/AppUpdater.swift, Sparkle 2): checked once a day (Sparkle's default
+	     interval, so no SUScheduledCheckInterval) and when the user chooses 업데이트 확인…; Sparkle shows the update and
+	     the user chooses to install it (no automatic installs, no permission prompt). The feed is the appcast.xml of the
+	     latest GitHub release (.github/workflows/release.yml writes it); every update is verified, before it is opened,
+	     with this EdDSA public key, whose private key is the SPARKLE_PRIVATE_KEY repository secret. Only the owner sets
+	     the key (it has been in since 2026-10-02): with a placeholder in its place the app starts no updater, the unit
+	     tests fail and nothing is released. Once a release has shipped, changing the feed or the key strands every installed copy: they can no
+	     longer update. -->
+	<key>SUFeedURL</key><string>https://github.com/hyunseop827/hangeul-filename-fixer/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key><string>KTrWTFRXkdVnHCxeYIITqoH+lfxCrhr5RPJcsph1a5Y=</string>
+	<key>SUEnableAutomaticChecks</key><true/>
+	<key>SUAllowsAutomaticUpdates</key><false/>
+	<key>SUVerifyUpdateBeforeExtraction</key><true/>
+</dict>
+</plist>

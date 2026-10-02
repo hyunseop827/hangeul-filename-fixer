@@ -1,5 +1,8 @@
 # 코드 리뷰 기록 (2026-10-01)
 
+> 이 문서는 Electron으로 만든 앱(v1.1.0)의 기록입니다. 2.0.0에서 앱을 Swift로 다시 만들어서, 여기 나오는 파일(`electron/`, `src/`)과 `npm` 명령어는 지금 저장소에 없습니다.
+> 지금 구조는 [ARCHITECTURE.md](ARCHITECTURE.md), 다시 만든 과정은 [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md)에 있습니다.
+
 `5044478` 기준 전체 코드를 리뷰하고 정리한 기록입니다. Claude Code(Claude Opus 5.5)의 다중 에이전트 리뷰로 진행했습니다.
 작업 방식은 [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md), 변경 목록은 [v1.1.0 릴리스 노트](https://github.com/hyunseop827/hangeul-filename-fixer/releases/tag/v1.1.0)에 있습니다.
 

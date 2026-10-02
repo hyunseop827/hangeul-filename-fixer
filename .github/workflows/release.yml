@@ -1,19 +1,48 @@
-# Releases the version in package.json. Called by ci.yml after the checks pass on a push to main; nothing else
+# Releases the version in Resources/Info.plist. Called by ci.yml after the checks pass on a push to main; nothing else
 # starts it, so every release comes from a tested commit on main and a person never pushes a tag.
 #
-# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg and checks it (scripts/verify-dmg.sh),
-#   tags the commit v<version> with .github/release-notes.md as the message, publishes the GitHub release with those
-#   notes and install notes, attaches the dmg and its checksum plus the same dmg under the fixed name
-#   hangeul-filename-fixer.dmg (+ .sha256), then downloads the fixed name back through
-#   https://github.com/<owner>/<repo>/releases/latest/download/hangeul-filename-fixer.dmg (the README link) and checks it.
+# - Version not released yet: builds hangeul-filename-fixer-<version>.dmg (scripts/make-dmg.sh) and checks it
+#   (scripts/verify-dmg.sh), signs it for the in-app updater and writes appcast.xml (scripts/make-appcast.sh), tags the
+#   commit v<version> with .github/release-notes.md as the message, publishes the GitHub release with those notes and
+#   install notes, attaches the dmg and its checksum, the same dmg under the fixed name hangeul-filename-fixer.dmg
+#   (+ .sha256) and appcast.xml, then downloads the fixed name and the feed back through
+#   https://github.com/<owner>/<repo>/releases/latest/download/ (the README link and the app's SUFeedURL) and checks
+#   them.
 # - Version already released: nothing to do, unless the app changed since its tag without a new version, which fails.
 # - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind), and
 #   downloads a release that this commit already published again to check it.
 # scripts/release-plan.mjs makes these decisions; run it locally to see what CI will do.
+#
+# In-app updates (Sparkle). Every release carries appcast.xml, the feed that the app's daily check and "업데이트 확인…"
+# read through https://github.com/<owner>/<repo>/releases/latest/download/appcast.xml (SUFeedURL in
+# Resources/Info.plist). It has one item: this version, its build number (CFBundleVersion, the CI run number), the
+# release notes, and the versioned dmg with an EdDSA signature made by Sparkle's sign_update with the repository secret
+#   SPARKLE_PRIVATE_KEY   the private EdDSA key, base64, as Sparkle's `generate_keys -x` exports it. Only the owner
+#                         creates and stores it; ci.yml hands it to this workflow, and here only the step that signs
+#                         ("업데이트 피드 만들기") gets its value. The key check only learns whether it is set.
+# Every run stops in the plan (scripts/release-plan.mjs, which pull requests run too) when SUPublicEDKey is not the
+# key of the releases that already shipped with one: installed copies would refuse every later update.
+# A run that is going to publish (a version that is not released yet, also when re-run) stops
+#   - right after the plan, before anything is built or tagged, when that secret is empty or when SUPublicEDKey in
+#     Resources/Info.plist is not a real public key (the placeholder);
+#   - after the dmg is built and before the tag, when the build number is not higher than the one in the feed that is
+#     published now (or that feed is missing although a release with Sparkle is out), or when the signature does not
+#     verify against the app's own SUPublicEDKey.
+# Runs that publish nothing need no key: a version that is already released, and every pull request (ci.yml calls
+# this workflow only for pushes to main).
+#
+# The app is ad-hoc signed (hardened runtime), the dmg itself is unsigned, nothing is notarized, and the release notes
+# say so. The EdDSA signature is what lets an installed copy trust an update.
 name: Release
 
 on:
   workflow_call:
+    secrets:
+      # Not `required: true`: the step "업데이트 서명 키 확인" decides, with instructions for the owner, and only for
+      # runs that publish. A missing secret must not fail the runs on main that release nothing.
+      SPARKLE_PRIVATE_KEY:
+        description: Sparkle의 EdDSA 개인 키 (generate_keys -x 로 내보낸 base64). appcast.xml 서명에 씁니다.
+        required: false
 
 permissions:
   contents: read
@@ -25,7 +54,11 @@ defaults:
 jobs:
   release:
     name: DMG와 GitHub 릴리스
-    runs-on: macos-latest
+    # swift-tools-version 6.2 needs Xcode 26. macos-26 is the Apple Silicon image with Xcode 26.x installed side by
+    # side as /Applications/Xcode_<version>.app; scripts/select-xcode.sh picks the newest released 26.x and nothing
+    # newer (see there for why):
+    # https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md
+    runs-on: macos-26
     timeout-minutes: 30
     permissions:
       contents: write # version tag, gh release create / upload / edit
@@ -42,37 +75,159 @@ jobs:
           fetch-tags: true
           persist-credentials: false
 
-      # No dependency cache: a release build should not restore caches other workflows wrote.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-
+      # Node.js is the one the runner image ships: the script uses only Node's built-in modules, so nothing is
+      # installed and no cache that another workflow wrote is restored into a release build.
       - name: 버전과 릴리스 상태 확인
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-plan.mjs
+        run: |
+          echo "node $(node --version)"
+          node scripts/release-plan.mjs
 
-      - name: 의존성 설치
+      # The first thing a run that is going to publish does, before Xcode is selected or anything is built: without
+      # the key no update feed can be signed, and a release without a feed, or with a public key that is not the
+      # owner's, would leave every installed copy unable to update. Runs that publish nothing skip it.
+      # The step is told only whether the secret is set, not its value.
+      - name: 업데이트 서명 키 확인
         if: steps.plan.outputs.publish == 'true'
-        run: npm ci
+        env:
+          HAS_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          if [[ "$HAS_PRIVATE_KEY" != true ]]; then
+            echo "::error::저장소 시크릿 SPARKLE_PRIVATE_KEY 가 없어 $TAG 릴리스를 여기서 멈췄습니다 (이 실행은 아무것도 만들거나 올리지 않았습니다). 저장소 소유자가 할 일: (1) swift package resolve 뒤 .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer 로 키를 만듭니다 (이미 만들었다면 같은 명령이 공개 키를 다시 보여 줍니다). (2) 그 공개 키가 Resources/Info.plist 의 SUPublicEDKey 와 같은지 확인합니다. (3) 개인 키를 저장소 밖의 파일로 내보내 시크릿으로 등록합니다: KEY_FILE=\"\$HOME/hangeul-filename-fixer-update-key.txt\"; (umask 077; .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer -x \"\$KEY_FILE\"); gh secret set SPARKLE_PRIVATE_KEY -R $GITHUB_REPOSITORY < \"\$KEY_FILE\" (파일은 안전한 곳에 백업한 뒤 지웁니다. AGENTS.md 의 'What the owner still has to do'에 같은 명령이 있습니다). (4) 이 CI 실행에서 'Re-run failed jobs'를 누릅니다."
+            exit 1
+          fi
+          # The app must carry the owner's real public key (the base64 of 32 bytes), never the placeholder: a copy
+          # released with it could never update. The unit tests refuse the placeholder before the merge; this is the
+          # same refusal for the release itself.
+          key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' Resources/Info.plist 2> /dev/null || true)"
+          if [[ ! "$key" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+            echo "::error::Resources/Info.plist 의 SUPublicEDKey 가 실제 EdDSA 공개 키가 아닙니다 ('$key'). $TAG 를 릴리스하지 않았습니다. 저장소 소유자가 generate_keys --account hangeul-filename-fixer 가 출력한 공개 키를 넣어야 합니다 (Resources/Info.plist 는 앱 파일이라 새 커밋으로 올립니다)."
+            exit 1
+          fi
+          echo "OK  SPARKLE_PRIVATE_KEY 있음, SUPublicEDKey $key"
+
+      # Shared with ci.yml. scripts/toolchain.sh then uses the Xcode chosen here.
+      - name: Xcode 선택 (26.x 중 최신 정식 버전)
+        if: steps.plan.outputs.publish == 'true'
+        run: ./scripts/select-xcode.sh
+
+      # sign_update from Sparkle's own distribution, pinned by version and checksum (the file is refused when either
+      # differs). The version must be the one Package.resolved builds into the app, so the two are raised together.
+      # Before the build, so a wrong pin costs no build time.
+      - name: Sparkle 도구 받기 (sign_update)
+        id: sparkle
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          SPARKLE_VERSION: 2.10.0
+          # sha256 of Sparkle-2.10.0.tar.xz, the asset of https://github.com/sparkle-project/Sparkle/releases/tag/2.10.0
+          # (GitHub's digest for the asset; checked again by downloading and hashing the file).
+          SPARKLE_SHA256: c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c
+        run: |
+          if [[ ! -f Package.resolved ]]; then
+            echo "::error::Package.resolved 가 없습니다. 앱에 들어가는 Sparkle 버전을 확인할 수 없습니다 (swift package resolve 로 만들어 커밋하세요)."
+            exit 1
+          fi
+          resolved="$(jq -r '.pins[] | select(.identity == "sparkle") | .state.version' Package.resolved)"
+          if [[ "$resolved" != "$SPARKLE_VERSION" ]]; then
+            echo "::error::Package.resolved 의 Sparkle('$resolved')과 release.yml 의 SPARKLE_VERSION($SPARKLE_VERSION)이 다릅니다. 둘을 같이 올리세요 (SPARKLE_SHA256 도)."
+            exit 1
+          fi
+          dir="$RUNNER_TEMP/sparkle-$SPARKLE_VERSION"
+          rm -rf "$dir"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $dir/sparkle.tar.xz" | shasum -a 256 -c -
+          tar -xJf "$dir/sparkle.tar.xz" -C "$dir" ./bin/sign_update
+          # It must start on this runner (no key is involved).
+          "$dir/bin/sign_update" --help > /dev/null
+          echo "bin=$dir/bin" >> "$GITHUB_OUTPUT"
 
       - name: DMG 만들고 확인
+        id: dmg
         if: steps.plan.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.plan.outputs.version }}
+          # CFBundleVersion of the released app: the number of this CI run, so a later release always has a higher one.
+          # Sparkle compares this number (sparkle:version in appcast.xml) to decide what is newer.
+          APP_BUILD: ${{ github.run_number }}
         run: |
-          npm run dist
-          scripts/verify-dmg.sh "release/hangeul-filename-fixer-$VERSION.dmg" "$VERSION"
-          cd release
+          ./scripts/make-dmg.sh "$VERSION"
+          scripts/verify-dmg.sh "build/hangeul-filename-fixer-$VERSION.dmg" "$VERSION" "$APP_BUILD"
+          cd build
           # The same dmg under a fixed name, with its own checksum line (shasum -c works on the downloaded file).
+          # make-dmg.sh wrote the checksum of the versioned name.
           cp "hangeul-filename-fixer-$VERSION.dmg" hangeul-filename-fixer.dmg
-          shasum -a 256 "hangeul-filename-fixer-$VERSION.dmg" > "hangeul-filename-fixer-$VERSION.dmg.sha256"
+          shasum -a 256 -c "hangeul-filename-fixer-$VERSION.dmg.sha256"
           shasum -a 256 hangeul-filename-fixer.dmg > hangeul-filename-fixer.dmg.sha256
           cat "hangeul-filename-fixer-$VERSION.dmg.sha256"
 
-      # Only after the dmg is built and checked, so a failed build never leaves a tag behind. The token is handed to
-      # this one git command (the checkout keeps no credentials), the way actions/checkout itself authenticates.
+      # Sparkle offers a build only when its number is higher than the installed copy's, and never installs a lower
+      # one. The number is this CI run's, which only grows — unless ci.yml is renamed or recreated, which restarts the
+      # count. So before anything is tagged, compare with the feed that installed copies read now:
+      #   200 with an integer sparkle:version  this build must be higher, otherwise stop
+      #   404, and no published release has    no feed yet: the first release with Sparkle (the releases before it,
+      #   shipped with an update key           or a repository without releases, have no appcast.xml); go on
+      #   404, but a release with Sparkle is   stop: installed copies exist, and the number they compare with is
+      #   out (the plan names it)              unknown (the latest release lost its feed, or was made by hand)
+      #   anything else (network error, 5xx,   stop: without the published number the comparison cannot be made.
+      #   a feed that cannot be read)          Nothing is tagged yet, so "Re-run failed jobs" tries again
+      # Whether a release with Sparkle is out is not guessed from the 404: scripts/release-plan.mjs read it from the
+      # published releases and their tags (sparkle_release: the newest one whose Info.plist has a real SUPublicEDKey).
+      - name: 빌드 번호 확인 (지난 릴리스보다 커야 함)
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          APP: ${{ steps.dmg.outputs.app }}
+          FEED: https://github.com/${{ github.repository }}/releases/latest/download/appcast.xml
+          SPARKLE_RELEASE: ${{ steps.plan.outputs.sparkle_release }}
+        run: |
+          fail() { echo "::error::$*"; exit 1; }
+          [[ -n "$APP" && -f "$APP/Contents/Info.plist" ]] || fail "방금 만든 앱을 찾지 못했습니다 (make-dmg.sh 의 app 출력: '$APP')."
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+          [[ "$build" =~ ^[1-9][0-9]*$ ]] || fail "CFBundleVersion 이 정수가 아닙니다 ('$build'). Sparkle은 이 값을 비교합니다."
+          published="$RUNNER_TEMP/published-appcast.xml"
+          rm -f "$published"
+          # Without -f, so the status is read instead of guessed; curl prints 000 when there was no answer at all.
+          status="$(curl -sSL --retry 3 -o "$published" -w '%{http_code}' "$FEED" || true)"
+          if [[ "$status" == 404 ]]; then
+            if [[ -n "$SPARKLE_RELEASE" ]]; then
+              fail "지금 발행된 appcast.xml 이 없습니다 (HTTP 404, $FEED). 그런데 $SPARKLE_RELEASE 는 업데이트 기능(Sparkle)이 들어간 채 이미 릴리스되었습니다. 설치된 앱이 비교하는 빌드 번호를 알 수 없어 릴리스하지 않았습니다. 최신 릴리스에 appcast.xml 이 있는지 확인하세요 (손으로 만든 릴리스가 최신이 되었거나 파일이 지워졌을 수 있습니다)."
+            fi
+            echo "::notice::발행된 appcast.xml 이 아직 없습니다 (HTTP 404). 업데이트 키가 들어간 릴리스도 아직 없으므로, Sparkle을 넣은 첫 릴리스로 보고 빌드 번호 $build 를 그대로 씁니다."
+            exit 0
+          fi
+          [[ "$status" == 200 ]] || fail "지금 발행된 appcast.xml 을 받지 못했습니다 (HTTP $status, $FEED). 빌드 번호를 비교할 수 없어 릴리스하지 않았습니다. 잠시 뒤 'Re-run failed jobs'로 다시 실행하세요."
+          previous="$(xmllint --xpath 'string(//item/*[local-name()="version"])' "$published" 2> /dev/null || true)"
+          [[ "$previous" =~ ^[0-9]+$ ]] || fail "지금 발행된 appcast.xml 에서 빌드 번호(sparkle:version)를 읽지 못했습니다 ('$previous', $FEED). 빌드 번호를 비교할 수 없어 릴리스하지 않았습니다."
+          if (( 10#$build <= 10#$previous )); then
+            fail "이 빌드 번호($build)가 지금 발행된 릴리스의 빌드 번호($previous)보다 크지 않습니다. 설치된 앱이 업데이트로 보지 않으므로 릴리스하지 않았습니다. CI 실행 번호가 다시 시작됐는지(ci.yml 이름 변경 등) 확인하세요."
+          fi
+          echo "OK  빌드 번호 $build > 지금 발행된 $previous"
+
+      # Before the tag, so a key that is not the pair of SUPublicEDKey never leaves a tag behind. The item points at
+      # the versioned dmg (never the fixed name hangeul-filename-fixer.dmg, which a later release replaces); the two
+      # files are the same bytes, so the signature fits both.
+      - name: 업데이트 피드 만들기 (appcast.xml)
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SPARKLE_BIN: ${{ steps.sparkle.outputs.bin }}
+          APP: ${{ steps.dmg.outputs.app }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          dmg="build/hangeul-filename-fixer-$VERSION.dmg"
+          ./scripts/make-appcast.sh "$APP" "$dmg" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/${dmg##*/}" \
+            "$RUNNER_TEMP/release-body.md" build/appcast.xml
+          cat build/appcast.xml
+
+      # Only after the dmg is built and checked and the feed is signed and verified, so a failed build or a wrong key
+      # never leaves a tag behind. The token is handed to this one git command (the checkout keeps no credentials),
+      # the way actions/checkout itself authenticates.
       - name: 버전 태그 만들기
         if: steps.plan.outputs.publish == 'true' && steps.plan.outputs.tag_exists == 'false'
         env:
@@ -95,17 +250,28 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
           RELEASE_STATE: ${{ steps.plan.outputs.release_state }}
         run: |
-          dmg="release/hangeul-filename-fixer-$VERSION.dmg"
-          latest="release/hangeul-filename-fixer.dmg"
+          dmg="build/hangeul-filename-fixer-$VERSION.dmg"
+          latest="build/hangeul-filename-fixer.dmg"
+          appcast="build/appcast.xml"
+          if [[ ! -s "$appcast" ]]; then
+            echo "::error::$appcast 가 없습니다. 업데이트 피드 없이는 릴리스하지 않습니다."
+            exit 1
+          fi
+          # What the install notes promise is what scripts/verify-dmg.sh checked: a universal app whose two halves
+          # are built for the macOS in LSMinimumSystemVersion (12.0 is written "macOS 12").
+          min_macos="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Resources/Info.plist)"
+          min_macos="${min_macos%.0}"
           notes="$RUNNER_TEMP/release-notes.md"
           {
             cat "$RUNNER_TEMP/release-body.md"
             echo
             echo "## 설치"
             echo
-            echo "\`${dmg##*/}\`을 받아 열고 앱을 \`응용 프로그램\` 폴더로 옮기세요. Apple Silicon(M1 이상) Mac, macOS 12 이상."
+            echo "\`${dmg##*/}\`을 받아 열고 앱을 \`응용 프로그램\` 폴더로 옮기세요. Apple Silicon(M1 이상)과 Intel Mac 모두에서 실행되는 유니버설 앱입니다. macOS $min_macos 이상."
             echo
-            echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 \`시스템 설정\` → \`개인정보 보호 및 보안\` → \`그래도 열기\`를 누르세요. 자세한 방법은 [README](https://github.com/$GH_REPO#처음-여는-방법)에 있습니다."
+            echo "2.0.0부터는 앱 안에서 업데이트할 수 있습니다. 메뉴 막대의 \`한글 파일명 정리기\` > \`업데이트 확인…\`을 누르면 됩니다. 1.x에는 이 기능이 없어서 이 DMG로 한 번 직접 설치해야 합니다."
+            echo
+            echo "> ad-hoc 서명만 되어 있고 Apple 공증은 받지 않았습니다. 처음 실행이 막히면 [README의 처음 여는 방법](https://github.com/$GH_REPO#처음-여는-방법)을 따라 하세요. macOS 버전마다 방법이 다릅니다."
             echo
             echo "SHA-256 (\`${dmg##*/}\`): \`$(cut -d' ' -f1 < "$dmg.sha256")\`"
             echo
@@ -120,47 +286,108 @@ jobs:
             echo "::error::$TAG 릴리스가 초안이 아닙니다 (isDraft: '$is_draft'). 이미 공개된 릴리스는 건드리지 않습니다."
             exit 1
           fi
-          gh release upload "$TAG" "$dmg" "$dmg.sha256" "$latest" "$latest.sha256" --clobber
+          # appcast.xml goes up with the dmg it describes, while the release is still a draft: the moment the release
+          # becomes the latest one, installed copies read this feed.
+          gh release upload "$TAG" "$dmg" "$dmg.sha256" "$latest" "$latest.sha256" "$appcast" --clobber
           gh release edit "$TAG" --title "$title" --notes-file "$notes" --draft=false --prerelease=false --latest
 
-      - name: README 링크로 다시 받아 확인
+      - name: README 링크와 업데이트 피드 다시 받아 확인
         if: steps.plan.outputs.verify == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.plan.outputs.tag }}
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
-          built="$GITHUB_WORKSPACE/release/hangeul-filename-fixer-$VERSION.dmg" # missing on a re-run that built nothing
+          fail() { echo "::error::$*"; exit 1; }
+          # Both are missing on a re-run that built nothing (the release was published by an earlier attempt).
+          built="$GITHUB_WORKSPACE/build/hangeul-filename-fixer-$VERSION.dmg"
+          built_feed="$GITHUB_WORKSPACE/build/appcast.xml"
           dir="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-verify.XXXXXX")"
-          trap 'rm -rf -- "$dir"' EXIT
+          # The downloaded dmg is attached further down, to read the released app's Info.plist; the mount never
+          # outlives the step (detaching fails quietly when nothing is attached, the usual case).
+          mount_dir="$dir/mount"
+          trap 'hdiutil detach -quiet -force "$mount_dir" 2> /dev/null || true; rm -rf -- "$dir"' EXIT
           cd "$dir"
           server="https://github.com/$GITHUB_REPOSITORY/releases"
-          # The README link serves the latest release. A re-run for an older version checks that version's own copy.
+          # The README link and the app's feed serve the latest release, so that is where the files are downloaded
+          # from. Only a re-run for a version that a newer published release has superseded checks that version's own
+          # copies instead (the latest link will never serve them again), and says so. When the latest release is not
+          # known, or is not a newer one, the latest link is checked and must serve this release.
           base="$server/latest/download"
           expected=""
           if [[ ! -f "$built" ]]; then
             latest_tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name' || true)"
-            if [[ "$latest_tag" != "$TAG" ]]; then base="$server/download/$TAG"; fi
-            expected="$(curl -fsSL "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg.sha256" | cut -d' ' -f1)"
-            [[ -n "$expected" ]] || { echo "::error::$TAG 의 체크섬 파일을 받지 못했습니다."; exit 1; }
+            if [[ -n "$latest_tag" && "$latest_tag" != "$TAG" && "$(printf '%s\n%s\n' "$TAG" "$latest_tag" | sort -V | tail -n 1)" == "$latest_tag" ]]; then
+              base="$server/download/$TAG"
+              echo "::notice::더 새로운 릴리스 $latest_tag 가 최신입니다. 최신 링크 대신 $TAG 자체의 파일($base)을 확인합니다."
+            fi
+            # `|| true`: when the file cannot be downloaded, the message below is the one to show, not curl's own.
+            expected="$(curl -fsSL "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg.sha256" | cut -d' ' -f1 || true)"
+            [[ -n "$expected" ]] || fail "$TAG 의 체크섬 파일을 받지 못했습니다."
           fi
-          same() { # the download is the dmg of this release: built in this run, or matching the release's checksum
+          # Empty when the feed cannot be read or has no such value; the checks below then say what is wrong.
+          feed_value() { xmllint --xpath "string($1)" appcast.xml 2> /dev/null || true; }
+          same_dmg() { # the download is the dmg of this release: built in this run, or matching the release's checksum
             if [[ -f "$built" ]]; then cmp -s hangeul-filename-fixer.dmg "$built"; else [[ "$(shasum -a 256 hangeul-filename-fixer.dmg | cut -d' ' -f1)" == "$expected" ]]; fi
           }
-          # The latest link can lag a few seconds behind the publish.
+          same_feed() { # the download is the feed of this release: the file this run built, or one about this version
+            if [[ -f "$built" ]]; then cmp -s appcast.xml "$built_feed"; else [[ "$(feed_value '//item/*[local-name()="shortVersionString"]')" == "$VERSION" ]]; fi
+          }
+          # The latest link can lag a few seconds behind the publish, and not for every file at the same moment: the
+          # previous release has a dmg and a feed under the same names, so their downloads succeed too. Try again
+          # until both are this release's; after the last attempt the checks below say which one is not.
+          fetched=false
           for attempt in 1 2 3 4 5 6; do
-            rm -f hangeul-filename-fixer.dmg hangeul-filename-fixer.dmg.sha256
+            rm -f hangeul-filename-fixer.dmg hangeul-filename-fixer.dmg.sha256 appcast.xml
+            fetched=false
             if curl -fsSL -o hangeul-filename-fixer.dmg "$base/hangeul-filename-fixer.dmg" \
               && curl -fsSL -o hangeul-filename-fixer.dmg.sha256 "$base/hangeul-filename-fixer.dmg.sha256" \
-              && same; then
-              break
+              && curl -fsSL -o appcast.xml "$base/appcast.xml"; then
+              fetched=true
+              if same_dmg && same_feed; then break; fi
             fi
-            if [[ $attempt == 6 ]]; then
-              echo "::error::$base/hangeul-filename-fixer.dmg 가 $TAG 의 DMG와 다르거나 받아지지 않습니다."
-              exit 1
-            fi
-            sleep $((attempt * 10))
+            if [[ $attempt != 6 ]]; then sleep $((attempt * 10)); fi
           done
+          [[ $fetched == true ]] || fail "$base 에서 DMG·체크섬·appcast.xml 가운데 받아지지 않는 것이 있습니다."
+          same_dmg || fail "$base/hangeul-filename-fixer.dmg 가 $TAG 의 DMG와 다릅니다."
           shasum -a 256 -c hangeul-filename-fixer.dmg.sha256
           hdiutil verify -quiet hangeul-filename-fixer.dmg
           echo "OK  $base/hangeul-filename-fixer.dmg ($TAG)"
+
+          # The feed the installed copies read: the one this run uploaded, about this version, pointing at this
+          # release's versioned dmg, with a signature the installed copies accept (SUPublicEDKey of this commit). The
+          # signature is checked over the download above: the fixed-name dmg is the same file as the versioned one.
+          xmllint --noout appcast.xml || fail "$base/appcast.xml 이 올바른 XML이 아닙니다."
+          if [[ -f "$built" ]] && ! cmp -s appcast.xml "$built_feed"; then
+            fail "$base/appcast.xml 이 이번 실행에서 만들어 올린 것과 다릅니다."
+          fi
+          feed_build="$(feed_value '//item/*[local-name()="version"]')"
+          short="$(feed_value '//item/*[local-name()="shortVersionString"]')"
+          url="$(feed_value '//item/enclosure/@url')"
+          length="$(feed_value '//item/enclosure/@length')"
+          signature="$(feed_value '//item/enclosure/@*[local-name()="edSignature"]')"
+          [[ "$(feed_value 'count(//item)')" == 1 ]] || fail "appcast.xml 에 항목이 하나가 아닙니다."
+          [[ "$feed_build" =~ ^[1-9][0-9]*$ ]] || fail "appcast.xml 의 빌드 번호(sparkle:version)가 정수가 아닙니다: '$feed_build'"
+          [[ "$short" == "$VERSION" ]] || fail "appcast.xml 의 버전이 '$short' 입니다 ($VERSION 이어야 합니다)."
+          [[ "$url" == "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg" ]] || fail "appcast.xml 의 다운로드 주소가 다릅니다: '$url'"
+          [[ "$length" == "$(stat -f %z hangeul-filename-fixer.dmg)" ]] || fail "appcast.xml 의 파일 크기($length)가 받은 DMG와 다릅니다."
+          # The feed's build number is the released app's own CFBundleVersion, read from the downloaded dmg. Sparkle
+          # compares the two: with a higher number in the feed an installed copy would be offered this update again
+          # after every install, with a lower one never.
+          mkdir "$mount_dir"
+          hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" hangeul-filename-fixer.dmg \
+            || fail "받은 DMG를 열지 못했습니다(hdiutil attach)."
+          app_plist="$mount_dir/한글 파일명 정리기.app/Contents/Info.plist"
+          app_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_plist" 2> /dev/null || true)"
+          app_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_plist" 2> /dev/null || true)"
+          # hdiutil sometimes answers "Resource busy" for a moment: try, wait, try again, then force (read-only mount).
+          hdiutil detach -quiet "$mount_dir" \
+            || { sleep 2; hdiutil detach -quiet "$mount_dir"; } \
+            || hdiutil detach -quiet -force "$mount_dir"
+          [[ "$app_version" == "$VERSION" ]] || fail "받은 DMG 안 앱의 버전이 '$app_version' 입니다 ($VERSION 이어야 합니다)."
+          [[ "$feed_build" == "$app_build" ]] || fail "appcast.xml 의 빌드 번호($feed_build)가 받은 DMG 안 앱의 빌드 번호(CFBundleVersion '$app_build')와 다릅니다."
+          public_key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$GITHUB_WORKSPACE/Resources/Info.plist")"
+          verified=0
+          xcrun swift "$GITHUB_WORKSPACE/scripts/ed25519-verify.swift" "$public_key" hangeul-filename-fixer.dmg "$signature" || verified=$?
+          [[ $verified == 0 ]] || fail "appcast.xml 의 서명이 Resources/Info.plist 의 SUPublicEDKey 로 확인되지 않습니다 (ed25519-verify.swift 종료 코드 $verified)."
+          echo "OK  $base/appcast.xml ($short, 빌드 $feed_build, 서명 확인됨)"
