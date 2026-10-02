@@ -1,7 +1,7 @@
 // The copy engine against real HFS+ and exFAT volumes.
 //
-// macOS reports names on these volumes decomposed, so a copy with a Korean name cannot be kept there (see "의도된
-// 동작" in AGENTS.md): the engine must refuse it in Korean and leave nothing behind, not even the "._" AppleDouble
+// macOS reports names on these volumes decomposed, so a copy with a Korean name cannot be kept there (see "Intended
+// behavior (not bugs)" in AGENTS.md): the engine must refuse it in Korean and leave nothing behind, not even the "._" AppleDouble
 // file exFAT uses for extended attributes. A name without composed characters must work as on APFS.
 //
 // Two 4 MB disk images are made with hdiutil once per run (about 3 seconds) and detached when the suite ends, or by
