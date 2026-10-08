@@ -2,12 +2,12 @@
 # starts it, so every release comes from a tested commit on main and a person never pushes a tag.
 #
 # - Version not released yet: builds hangeul-filename-fixer-<version>.dmg (scripts/make-dmg.sh) and checks it
-#   (scripts/verify-dmg.sh), signs it for the in-app updater and writes appcast.xml (scripts/make-appcast.sh), tags the
-#   commit v<version> with .github/release-notes.md as the message, publishes the GitHub release with those notes and
-#   install notes, attaches the dmg and its checksum, the same dmg under the fixed name hangeul-filename-fixer.dmg
-#   (+ .sha256) and appcast.xml, then downloads the fixed name and the feed back through
-#   https://github.com/<owner>/<repo>/releases/latest/download/ (the README link and the app's SUFeedURL) and checks
-#   them.
+#   (scripts/verify-dmg.sh), starts the app from it as arm64 and as x86_64 (the same launch check as ci.yml), signs it
+#   for the in-app updater and writes appcast.xml (scripts/make-appcast.sh), tags the commit v<version> with
+#   .github/release-notes.md as the message, publishes the GitHub release with those notes and install notes, attaches
+#   the dmg and its checksum, the same dmg under the fixed name hangeul-filename-fixer.dmg (+ .sha256) and appcast.xml,
+#   then downloads the fixed name and the feed back through https://github.com/<owner>/<repo>/releases/latest/download/
+#   (the README link and the app's SUFeedURL), and the versioned dmg the feed points at, and checks them.
 # - Version already released: nothing to do, unless the app changed since its tag without a new version, which fails.
 # - "Re-run failed jobs" on the CI run finishes a run that stopped half way (tag or draft release left behind), and
 #   downloads a release that this commit already published again to check it.
@@ -25,9 +25,9 @@
 # A run that is going to publish (a version that is not released yet, also when re-run) stops
 #   - right after the plan, before anything is built or tagged, when that secret is empty or when SUPublicEDKey in
 #     Resources/Info.plist is not a real public key (the placeholder);
-#   - after the dmg is built and before the tag, when the build number is not higher than the one in the feed that is
-#     published now (or that feed is missing although a release with Sparkle is out), or when the signature does not
-#     verify against the app's own SUPublicEDKey.
+#   - after the dmg is built and before the tag, when the app in it does not start as arm64 or as x86_64, when the
+#     build number is not higher than the one in the feed that is published now (or that feed is missing although a
+#     release with Sparkle is out), or when the signature does not verify against the app's own SUPublicEDKey.
 # Runs that publish nothing need no key: a version that is already released, and every pull request (ci.yml calls
 # this workflow only for pushes to main).
 #
@@ -68,7 +68,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: 체크아웃 (검사한 커밋, 태그 포함)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -96,7 +96,7 @@ jobs:
           TAG: ${{ steps.plan.outputs.tag }}
         run: |
           if [[ "$HAS_PRIVATE_KEY" != true ]]; then
-            echo "::error::저장소 시크릿 SPARKLE_PRIVATE_KEY 가 없어 $TAG 릴리스를 여기서 멈췄습니다 (이 실행은 아무것도 만들거나 올리지 않았습니다). 저장소 소유자가 할 일: (1) swift package resolve 뒤 .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer 로 키를 만듭니다 (이미 만들었다면 같은 명령이 공개 키를 다시 보여 줍니다). (2) 그 공개 키가 Resources/Info.plist 의 SUPublicEDKey 와 같은지 확인합니다. (3) 개인 키를 저장소 밖의 파일로 내보내 시크릿으로 등록합니다: KEY_FILE=\"\$HOME/hangeul-filename-fixer-update-key.txt\"; (umask 077; .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer -x \"\$KEY_FILE\"); gh secret set SPARKLE_PRIVATE_KEY -R $GITHUB_REPOSITORY < \"\$KEY_FILE\" (파일은 안전한 곳에 백업한 뒤 지웁니다. AGENTS.md 의 'What the owner still has to do'에 같은 명령이 있습니다). (4) 이 CI 실행에서 'Re-run failed jobs'를 누릅니다."
+            echo "::error::저장소 시크릿 SPARKLE_PRIVATE_KEY 가 없어 $TAG 릴리스를 여기서 멈췄습니다 (이 실행은 아무것도 만들거나 올리지 않았습니다). 저장소 소유자가 할 일: (1) swift package resolve 뒤 .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer 로 키를 만듭니다 (이미 만들었다면 같은 명령이 공개 키를 다시 보여 줍니다). (2) 그 공개 키가 Resources/Info.plist 의 SUPublicEDKey 와 같은지 확인합니다. (3) 개인 키를 저장소 밖의 파일로 내보내 시크릿으로 등록합니다: KEY_FILE=\"\$HOME/hangeul-filename-fixer-update-key.txt\"; (umask 077; .build/artifacts/sparkle/Sparkle/bin/generate_keys --account hangeul-filename-fixer -x \"\$KEY_FILE\"); gh secret set SPARKLE_PRIVATE_KEY -R $GITHUB_REPOSITORY < \"\$KEY_FILE\" (파일은 안전한 곳에 백업한 뒤 지웁니다. AGENTS.md 의 'The update key (the owner's)'에 같은 명령이 있습니다). (4) 이 CI 실행에서 'Re-run failed jobs'를 누릅니다."
             exit 1
           fi
           # The app must carry the owner's real public key (the base64 of 32 bytes), never the placeholder: a copy
@@ -164,6 +164,101 @@ jobs:
           shasum -a 256 -c "hangeul-filename-fixer-$VERSION.dmg.sha256"
           shasum -a 256 hangeul-filename-fixer.dmg > hangeul-filename-fixer.dmg.sha256
           cat "hangeul-filename-fixer-$VERSION.dmg.sha256"
+
+      # The released app itself, copied out of the dmg just built (its build number is this run's), must start as
+      # arm64 and as x86_64 (Rosetta), the same check the pull request ran on its own build (ci.yml, "실행 확인"): each
+      # process has to put an ordinary window on screen and still be running a few seconds later. A missing library or
+      # a crash at launch ends the process. An app that hangs, shows only an alert, or whose launch code raises an
+      # exception (AppKit catches it and carries on) stays alive, but its window never appears. Before the tag, so an
+      # app that does not start is never released. The copy started here has an updater with the real key and a build
+      # number higher than the published feed's, so it is offered nothing.
+      - name: 실행 확인 (arm64, x86_64)
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          DMG: ${{ steps.dmg.outputs.dmg }}
+        run: |
+          work="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-launch.XXXXXX")"
+          mount_dir="$work/mount"
+          mkdir "$mount_dir"
+          pid=""
+          cleanup() {
+            if [[ -n "$pid" ]]; then kill "$pid" 2> /dev/null || true; fi
+            # Fails quietly when the image is detached already (the usual case).
+            hdiutil detach -quiet -force "$mount_dir" 2> /dev/null || true
+            rm -rf -- "$work"
+          }
+          trap cleanup EXIT
+          if ! hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" "$DMG"; then
+            echo "::error::$DMG 를 열지 못했습니다(hdiutil attach)."
+            exit 1
+          fi
+          ditto "$mount_dir/한글 파일명 정리기.app" "$work/한글 파일명 정리기.app"
+          # hdiutil sometimes answers "Resource busy" for a moment: try, wait, try again, then force (read-only mount).
+          hdiutil detach -quiet "$mount_dir" \
+            || { sleep 2; hdiutil detach -quiet "$mount_dir"; } \
+            || hdiutil detach -quiet -force "$mount_dir"
+          binary="$work/한글 파일명 정리기.app/Contents/MacOS/HangeulFilenameFixer"
+          # Prints how many ordinary (layer 0) windows of a process are on screen. An alert or a menu is on another
+          # layer. Only owner and layer are read from the window list, which needs no permission.
+          # With "all" instead of a process ID: every window on screen, whoever owns it (to tell "the app showed
+          # nothing" from "this session shows no windows at all").
+          window_count() {
+            osascript -l JavaScript -e '
+              ObjC.import("CoreGraphics");
+              function run(argv) {
+                const options = $.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;
+                const list = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(options, 0)));
+                if (argv[0] === "all") return String(list.length);
+                const pid = Number(argv[0]);
+                return String(list.filter((w) => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0).length);
+              }' "$1"
+          }
+          limit=30
+          for architecture in arm64 x86_64; do
+            log="$work/launch-$architecture.log"
+            query_log="$work/window-query-$architecture.log"
+            # arch replaces itself with the program, so $! is the app's process.
+            arch "-$architecture" "$binary" > "$log" 2>&1 &
+            pid=$!
+            windows=0
+            waited=0
+            while (( waited < limit )) && kill -0 "$pid" 2> /dev/null; do
+              sleep 1
+              waited=$((waited + 1))
+              windows="$(window_count "$pid" 2> "$query_log" || true)"
+              if [[ ! "$windows" =~ ^[0-9]+$ ]]; then windows=0; fi
+              if (( windows > 0 )); then break; fi
+            done
+            # The window is up: the app must also survive the next few seconds.
+            if (( windows > 0 )); then sleep 3; fi
+            if ! kill -0 "$pid" 2> /dev/null; then
+              code=0
+              wait "$pid" || code=$?
+              pid=""
+              if (( windows > 0 )); then
+                echo "::error::앱이 $architecture 로 실행되어 창을 띄운 뒤 3초 안에 끝났습니다 (종료 코드 $code). 태그를 만들기 전이라 아무것도 릴리스되지 않았습니다."
+              else
+                echo "::error::앱이 $architecture 로 실행된 뒤 창을 띄우기 전에 끝났습니다 (종료 코드 $code). 태그를 만들기 전이라 아무것도 릴리스되지 않았습니다."
+              fi
+              cat "$log"
+              exit 1
+            fi
+            if (( windows == 0 )); then
+              echo "::error::앱이 $architecture 로 실행되었지만 ${limit}초 안에 창이 뜨지 않았습니다. 태그를 만들기 전이라 아무것도 릴리스되지 않았습니다."
+              cat "$log"
+              echo "이 세션의 화면에 있는 창(모든 앱): $(window_count all 2>&1 || true)개"
+              if [[ -s "$query_log" ]]; then
+                echo "창 목록을 읽는 중 난 오류(osascript):"
+                cat "$query_log"
+              fi
+              exit 1
+            fi
+            echo "OK  $architecture: ${waited}초 만에 창 ${windows}개, 그 뒤 3초 동안 실행 중 (pid $pid)"
+            cat "$log"
+            kill "$pid"
+            wait "$pid" 2> /dev/null || true
+            pid=""
+          done
 
       # Sparkle offers a build only when its number is higher than the installed copy's, and never installs a lower
       # one. The number is this CI run's, which only grows — unless ci.yml is renamed or recreated, which restarts the
@@ -299,8 +394,12 @@ jobs:
           VERSION: ${{ steps.plan.outputs.version }}
         run: |
           fail() { echo "::error::$*"; exit 1; }
+          # Every failure in this step comes after the release was published; nothing is rolled back here.
+          rerun_hint="릴리스 $TAG 는 이미 발행되어 있습니다. 같은 커밋의 이 실행에서 'Re-run failed jobs'를 누르면 발행된 파일을 다시 받아 확인만 합니다."
+          # The dmg the feed's enclosure points at (and an installed copy downloads), under this release's own address.
+          versioned="hangeul-filename-fixer-$VERSION.dmg"
           # Both are missing on a re-run that built nothing (the release was published by an earlier attempt).
-          built="$GITHUB_WORKSPACE/build/hangeul-filename-fixer-$VERSION.dmg"
+          built="$GITHUB_WORKSPACE/build/$versioned"
           built_feed="$GITHUB_WORKSPACE/build/appcast.xml"
           dir="$(mktemp -d "$RUNNER_TEMP/hangeul-filename-fixer-verify.XXXXXX")"
           # The downloaded dmg is attached further down, to read the released app's Info.plist; the mount never
@@ -322,8 +421,8 @@ jobs:
               echo "::notice::더 새로운 릴리스 $latest_tag 가 최신입니다. 최신 링크 대신 $TAG 자체의 파일($base)을 확인합니다."
             fi
             # `|| true`: when the file cannot be downloaded, the message below is the one to show, not curl's own.
-            expected="$(curl -fsSL "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg.sha256" | cut -d' ' -f1 || true)"
-            [[ -n "$expected" ]] || fail "$TAG 의 체크섬 파일을 받지 못했습니다."
+            expected="$(curl -fsSL "$server/download/$TAG/$versioned.sha256" | cut -d' ' -f1 || true)"
+            [[ -n "$expected" ]] || fail "$TAG 의 체크섬 파일을 받지 못했습니다. $rerun_hint"
           fi
           # Empty when the feed cannot be read or has no such value; the checks below then say what is wrong.
           feed_value() { xmllint --xpath "string($1)" appcast.xml 2> /dev/null || true; }
@@ -333,30 +432,52 @@ jobs:
           same_feed() { # the download is the feed of this release: the file this run built, or one about this version
             if [[ -f "$built" ]]; then cmp -s appcast.xml "$built_feed"; else [[ "$(feed_value '//item/*[local-name()="shortVersionString"]')" == "$VERSION" ]]; fi
           }
-          # The latest link can lag a few seconds behind the publish, and not for every file at the same moment: the
-          # previous release has a dmg and a feed under the same names, so their downloads succeed too. Try again
-          # until both are this release's; after the last attempt the checks below say which one is not.
+          # Downloads one file into the current folder and logs its HTTP status; succeeds only on 200. Without -f, so
+          # the status is read instead of guessed (curl prints 000 when there was no answer at all).
+          download() { # <url> <file>
+            local status
+            status="$(curl -sSL --retry 3 -o "$2" -w '%{http_code}' "$1" || true)"
+            echo "    HTTP $status  $1"
+            [[ "$status" == 200 ]]
+          }
+          # The latest link can lag a few minutes behind the publish (about 2.5 minutes on 2026-10-02), and not for
+          # every file at the same moment: the previous release has a dmg and a feed under the same names, so their
+          # downloads succeed too. Try again, about five minutes in all, until both are this release's; after the last
+          # attempt the checks below say which one is not. The versioned dmg and its checksum come from this release's
+          # own address, which the feed's enclosure names and which does not move.
+          attempts=10
           fetched=false
-          for attempt in 1 2 3 4 5 6; do
-            rm -f hangeul-filename-fixer.dmg hangeul-filename-fixer.dmg.sha256 appcast.xml
+          for (( attempt = 1; attempt <= attempts; attempt++ )); do
+            echo "시도 $attempt/$attempts"
+            rm -f hangeul-filename-fixer.dmg hangeul-filename-fixer.dmg.sha256 appcast.xml "$versioned" "$versioned.sha256"
             fetched=false
-            if curl -fsSL -o hangeul-filename-fixer.dmg "$base/hangeul-filename-fixer.dmg" \
-              && curl -fsSL -o hangeul-filename-fixer.dmg.sha256 "$base/hangeul-filename-fixer.dmg.sha256" \
-              && curl -fsSL -o appcast.xml "$base/appcast.xml"; then
+            if download "$base/hangeul-filename-fixer.dmg" hangeul-filename-fixer.dmg \
+              && download "$base/hangeul-filename-fixer.dmg.sha256" hangeul-filename-fixer.dmg.sha256 \
+              && download "$base/appcast.xml" appcast.xml \
+              && download "$server/download/$TAG/$versioned" "$versioned" \
+              && download "$server/download/$TAG/$versioned.sha256" "$versioned.sha256"; then
               fetched=true
               if same_dmg && same_feed; then break; fi
+              echo "    아직 $TAG 의 DMG와 피드가 아닙니다."
             fi
-            if [[ $attempt != 6 ]]; then sleep $((attempt * 10)); fi
+            if (( attempt < attempts )); then sleep 30; fi
           done
-          [[ $fetched == true ]] || fail "$base 에서 DMG·체크섬·appcast.xml 가운데 받아지지 않는 것이 있습니다."
-          same_dmg || fail "$base/hangeul-filename-fixer.dmg 가 $TAG 의 DMG와 다릅니다."
+          [[ $fetched == true ]] || fail "$base 의 DMG·체크섬·appcast.xml 과 $TAG 의 $versioned(.sha256) 가운데 받아지지 않는 것이 있습니다 ($attempts 번 시도). $rerun_hint"
+          same_dmg || fail "$base/hangeul-filename-fixer.dmg 가 $attempts 번 시도한 뒤에도 $TAG 의 DMG와 다릅니다. $rerun_hint"
+          same_feed || fail "$base/appcast.xml 이 $attempts 번 시도한 뒤에도 $TAG 의 업데이트 피드가 아닙니다. $rerun_hint"
           shasum -a 256 -c hangeul-filename-fixer.dmg.sha256
           hdiutil verify -quiet hangeul-filename-fixer.dmg
           echo "OK  $base/hangeul-filename-fixer.dmg ($TAG)"
+          # The versioned dmg is what an installed copy downloads: its own checksum must fit, and it must be the same
+          # bytes as the fixed-name dmg (the README link).
+          shasum -a 256 -c "$versioned.sha256"
+          cmp -s "$versioned" hangeul-filename-fixer.dmg || fail "$server/download/$TAG/$versioned 가 $base/hangeul-filename-fixer.dmg 와 다릅니다."
+          echo "OK  $server/download/$TAG/$versioned (고정 이름 DMG와 같은 파일)"
 
           # The feed the installed copies read: the one this run uploaded, about this version, pointing at this
           # release's versioned dmg, with a signature the installed copies accept (SUPublicEDKey of this commit). The
-          # signature is checked over the download above: the fixed-name dmg is the same file as the versioned one.
+          # length and the signature are checked against both downloads, the versioned dmg the feed names and the
+          # fixed-name dmg.
           xmllint --noout appcast.xml || fail "$base/appcast.xml 이 올바른 XML이 아닙니다."
           if [[ -f "$built" ]] && ! cmp -s appcast.xml "$built_feed"; then
             fail "$base/appcast.xml 이 이번 실행에서 만들어 올린 것과 다릅니다."
@@ -369,8 +490,9 @@ jobs:
           [[ "$(feed_value 'count(//item)')" == 1 ]] || fail "appcast.xml 에 항목이 하나가 아닙니다."
           [[ "$feed_build" =~ ^[1-9][0-9]*$ ]] || fail "appcast.xml 의 빌드 번호(sparkle:version)가 정수가 아닙니다: '$feed_build'"
           [[ "$short" == "$VERSION" ]] || fail "appcast.xml 의 버전이 '$short' 입니다 ($VERSION 이어야 합니다)."
-          [[ "$url" == "$server/download/$TAG/hangeul-filename-fixer-$VERSION.dmg" ]] || fail "appcast.xml 의 다운로드 주소가 다릅니다: '$url'"
-          [[ "$length" == "$(stat -f %z hangeul-filename-fixer.dmg)" ]] || fail "appcast.xml 의 파일 크기($length)가 받은 DMG와 다릅니다."
+          [[ "$url" == "$server/download/$TAG/$versioned" ]] || fail "appcast.xml 의 다운로드 주소가 다릅니다: '$url'"
+          [[ "$length" == "$(stat -f %z "$versioned")" ]] || fail "appcast.xml 의 파일 크기($length)가 받은 $versioned 와 다릅니다."
+          [[ "$length" == "$(stat -f %z hangeul-filename-fixer.dmg)" ]] || fail "appcast.xml 의 파일 크기($length)가 받은 hangeul-filename-fixer.dmg 와 다릅니다."
           # The feed's build number is the released app's own CFBundleVersion, read from the downloaded dmg. Sparkle
           # compares the two: with a higher number in the feed an installed copy would be offered this update again
           # after every install, with a lower one never.
@@ -387,7 +509,9 @@ jobs:
           [[ "$app_version" == "$VERSION" ]] || fail "받은 DMG 안 앱의 버전이 '$app_version' 입니다 ($VERSION 이어야 합니다)."
           [[ "$feed_build" == "$app_build" ]] || fail "appcast.xml 의 빌드 번호($feed_build)가 받은 DMG 안 앱의 빌드 번호(CFBundleVersion '$app_build')와 다릅니다."
           public_key="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$GITHUB_WORKSPACE/Resources/Info.plist")"
-          verified=0
-          xcrun swift "$GITHUB_WORKSPACE/scripts/ed25519-verify.swift" "$public_key" hangeul-filename-fixer.dmg "$signature" || verified=$?
-          [[ $verified == 0 ]] || fail "appcast.xml 의 서명이 Resources/Info.plist 의 SUPublicEDKey 로 확인되지 않습니다 (ed25519-verify.swift 종료 코드 $verified)."
-          echo "OK  $base/appcast.xml ($short, 빌드 $feed_build, 서명 확인됨)"
+          for file in "$versioned" hangeul-filename-fixer.dmg; do
+            verified=0
+            xcrun swift "$GITHUB_WORKSPACE/scripts/ed25519-verify.swift" "$public_key" "$file" "$signature" || verified=$?
+            [[ $verified == 0 ]] || fail "appcast.xml 의 서명이 받은 $file 에 대해 Resources/Info.plist 의 SUPublicEDKey 로 확인되지 않습니다 (ed25519-verify.swift 종료 코드 $verified)."
+          done
+          echo "OK  $base/appcast.xml ($short, 빌드 $feed_build, 서명 확인됨: $versioned, hangeul-filename-fixer.dmg)"

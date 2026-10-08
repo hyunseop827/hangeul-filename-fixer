@@ -2,8 +2,10 @@
 // Reads the version from Resources/Info.plist (CFBundleShortVersionString) and the notes from .github/release-notes.md,
 // compares them with the version tags and GitHub releases, and writes the decision to $GITHUB_OUTPUT.
 //   node scripts/release-plan.mjs --check   only validates (CI runs this on every push to main and every pull request,
-//                                           so a missing version bump or notes header, or a changed update key, shows
-//                                           up before the merge)
+//                                           so a missing version bump or notes header, a changed update key, or an
+//                                           unfinished release (a version tag without a published release) shows up
+//                                           before the merge; notes identical to the last published release's are a
+//                                           warning)
 // Run it locally, from the repository root on a Mac (needs gh), to see what CI would do with the current commit.
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -127,6 +129,24 @@ for (const known of new Set([...tags, ...releases.map((release) => release.name)
   }
 }
 
+// An unfinished release: a version tag without a published release. release.yml tags before it publishes, so a tag
+// whose release is missing or still a draft is a run that stopped half way; it is finished with "Re-run failed jobs"
+// on that tag's commit, and nothing else goes to main until then (AGENTS.md, step 7). This version's own tag is left
+// out: the re-run of the commit that made it is what finishes it (checked below). On a pull request the token cannot
+// see drafts, so "no release found" counts as unfinished there too.
+const publishedTags = new Set(releases.filter((release) => !release.draft).map((release) => release.name));
+for (const other of tags) {
+  if (other === tag || !semver.test(other.slice(1)) || publishedTags.has(other)) {
+    continue;
+  }
+  const state = releases.some((release) => release.name === other) ? "초안" : "릴리스 없음";
+  fail(
+    `태그 ${other} 는 있는데 발행된 릴리스가 없습니다 (${state}). 그 릴리스는 끝나지 않았습니다: ` +
+      `그 태그 커밋의 CI 실행에서 'Re-run failed jobs'로 릴리스를 마치기 전에는 다른 것을 main 에 올리지 않습니다. ` +
+      "(풀 리퀘스트의 토큰은 초안 릴리스를 보지 못하므로, 초안도 여기서는 '릴리스 없음'으로 나옵니다.)"
+  );
+}
+
 // In-app updates (Sparkle). An installed copy accepts an update only when its signature fits the SUPublicEDKey that
 // copy itself carries; the app is ad-hoc signed, so there is no second way for it to trust one. A release with another
 // key would pass every other check (its own key and signature fit each other) and then be refused by every copy that
@@ -143,6 +163,7 @@ const currentUpdateKey = updateKeyOf(fs.readFileSync(infoPlistPath, "utf8"));
 // The newest published release, other than this version's, that shipped with a key: release.yml then expects a
 // published update feed. Empty before the first release with Sparkle.
 let sparkleRelease = "";
+let keyedReleases = 0;
 for (const release of releases) {
   if (release.draft || release.name === tag) {
     continue;
@@ -162,6 +183,7 @@ for (const release of releases) {
   if (!releasedKey) {
     continue;
   }
+  keyedReleases += 1;
   if (releasedKey !== currentUpdateKey) {
     fail(
       `${infoPlistPath} 의 SUPublicEDKey 가 ${release.name} 릴리스의 키와 다릅니다. ` +
@@ -170,6 +192,32 @@ for (const release of releases) {
     );
   }
   sparkleRelease ||= release.name;
+}
+if (sparkleRelease) {
+  console.log(
+    `OK  ${infoPlistPath} 의 SUPublicEDKey 는 발행된 ${sparkleRelease} 릴리스의 키와 같습니다` +
+      (keyedReleases > 1 ? ` (업데이트 키가 든 릴리스 ${keyedReleases}개 모두 같은 키).` : ".")
+  );
+}
+
+// The notes of the last published release (its tag's copy of the file), for comparison: a body identical to it is
+// usually left over from that release (step 3 says to replace the bullets). A warning, not a failure: a maintenance
+// release may legitimately repeat them.
+const latestPublished = releases
+  .filter((release) => !release.draft && release.name !== tag && semver.test(release.name.slice(1)) && tags.includes(release.name))
+  .map((release) => release.name)
+  .sort((a, b) => (isNewer(a.slice(1), b.slice(1)) ? -1 : 1))[0];
+if (latestPublished) {
+  const listed = spawnSync("git", ["ls-tree", "--name-only", `refs/tags/${latestPublished}`, "--", notesPath], { encoding: "utf8" });
+  if (listed.status === 0 && listed.stdout.trim()) {
+    const [, ...previousLines] = git("show", `refs/tags/${latestPublished}:${notesPath}`).replace(/\r/g, "").split("\n");
+    if (previousLines.join("\n").trim() === body) {
+      console.log(
+        `::warning::${notesPath} 의 내용(첫 줄 아래)이 마지막으로 발행된 ${latestPublished} 릴리스의 노트와 같습니다. ` +
+          "이번 버전에서 바뀐 점으로 고치세요 (유지 보수 릴리스라 같은 내용이 맞다면 그대로 두어도 됩니다)."
+      );
+    }
+  }
 }
 
 const tagCommit = tags.includes(tag) ? git("rev-parse", `refs/tags/${tag}^{commit}`) : null;

@@ -36,7 +36,7 @@ Versioned files and release notes are on [GitHub Releases](https://github.com/hy
 The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
 **Requirements:** macOS 12 Monterey or later. It is a universal app for both Apple Silicon (M1 or later) and Intel Macs, and the DMG is about 3 MB. The app UI and menus are in Korean.
-Before the in-app updater was added, 2.0.0 was used by hand on one Apple Silicon Mac with macOS 27, and the automated checks (CI, macOS 26) started it as an Apple Silicon app and as an Intel app (under Rosetta). The 2.0.0 build that includes the updater has not been run yet. It has also not been run on a real Intel Mac or on macOS 12 to 25 yet.
+Before the in-app updater was added, 2.0.0 was used by hand on one Apple Silicon Mac with macOS 27, and the automated checks (CI, macOS 26) started the 2.0.0 build that includes the updater as an Apple Silicon app and as an Intel app (under Rosetta). A real in-app update from an installed copy has not been done yet; it will be tested with 2.0.1. The app has also not been run on a real Intel Mac or on macOS 12 to 25 yet.
 
 This is a personal ad-hoc signed build and is not notarized by Apple.
 Because of that, macOS may show a warning saying Apple cannot verify that the app is free from malware.
@@ -73,9 +73,9 @@ From 2.0.0 on, the app updates from inside the app. You do not need to download 
 - Choose `한글 파일명 정리기` → `업데이트 확인…` (Check for Updates…) in the menu bar to check right away. While it is running, the app also checks once a day on its own.
 - When there is a newer version, it shows what changed and asks. Only when you choose `업데이트 설치` (Install Update) does it download the new version, verify its signature, replace the app and reopen it. It never installs without asking.
 - Keep the app in Applications. An app opened inside the DMG, or from where it was downloaded, cannot update itself.
-- **If you use 1.x (up to 1.1.0)**, the app has no updater. Download the 2.0.0 DMG and replace the app in Applications by hand once; after that, update from the app.
+- **If you use 1.x (up to 1.1.0)**, the app has no updater. Download the latest DMG and replace the app in Applications by hand once; after that, update from the app.
 
-2.0.0 is the first version with the updater, so the first real update will be the one to the next version.
+2.0.0 is the first version with the updater, so the first real update is the one from 2.0.0 to 2.0.1.
 
 ### Privacy
 
