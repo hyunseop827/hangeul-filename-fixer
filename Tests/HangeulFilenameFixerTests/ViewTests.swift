@@ -886,11 +886,13 @@ private final class FakeUpdaterController: NSObject, NSMenuItemValidation {
 		#expect(light.hosting.effectiveAppearance.isDark == false && dark.hosting.effectiveAppearance.isDark)
 
 		// The window's background in its corner (2 pt in), the card 8 pt under its top edge, where nothing else is drawn.
+		// The bitmap's generic RGB rounds the dark values a little differently under Rosetta (up to 5 a channel), so the
+		// tolerance is wider than the light palette needs; the luminance checks below keep dark dark and light light.
 		for (rendering, appearance) in [(light, NSAppearance.Name.aqua), (dark, .darkAqua)] {
 			let background = rendering.bitmap.hex(atX: 2, y: 2)
 			let card = rendering.bitmap.hex(atX: 40, y: 22)
-			#expect(isClose(background, hex(Theme.background, in: appearance)), "\(state), \(appearance.rawValue): \(String(background, radix: 16))")
-			#expect(isClose(card, hex(Theme.card, in: appearance)), "\(state), \(appearance.rawValue): \(String(card, radix: 16))")
+			#expect(isClose(background, hex(Theme.background, in: appearance), within: 8), "\(state), \(appearance.rawValue): \(String(background, radix: 16))")
+			#expect(isClose(card, hex(Theme.card, in: appearance), within: 8), "\(state), \(appearance.rawValue): \(String(card, radix: 16))")
 		}
 		#expect(luminance(light.bitmap.hex(atX: 2, y: 2)) > 0.9 && luminance(dark.bitmap.hex(atX: 2, y: 2)) < 0.05, "\(state)")
 		#expect(luminance(light.bitmap.hex(atX: 40, y: 22)) > 0.9 && luminance(dark.bitmap.hex(atX: 40, y: 22)) < 0.05, "\(state)")
@@ -927,10 +929,10 @@ private final class FakeUpdaterController: NSObject, NSMenuItemValidation {
 		let switched = try rendering(model, .aqua)
 		#expect(luminance(switched.bitmap.hex(atX: 40, y: 22)) > 0.9)
 		let again = try #require(render(switched.hosting, appearance: .darkAqua))
-		#expect(isClose(again.hex(atX: 2, y: 2), hex(Theme.background, in: .darkAqua)), "\(String(again.hex(atX: 2, y: 2), radix: 16))")
-		#expect(isClose(again.hex(atX: 40, y: 22), hex(Theme.card, in: .darkAqua)), "\(String(again.hex(atX: 40, y: 22), radix: 16))")
+		#expect(isClose(again.hex(atX: 2, y: 2), hex(Theme.background, in: .darkAqua), within: 8), "\(String(again.hex(atX: 2, y: 2), radix: 16))")
+		#expect(isClose(again.hex(atX: 40, y: 22), hex(Theme.card, in: .darkAqua), within: 8), "\(String(again.hex(atX: 40, y: 22), radix: 16))")
 		#expect(findViews(NSView.self, in: switched.hosting).map(\.frame) == switched.frames, "nothing moved")
 		let back = try #require(render(switched.hosting, appearance: .aqua))
-		#expect(isClose(back.hex(atX: 40, y: 22), hex(Theme.card, in: .aqua)))
+		#expect(isClose(back.hex(atX: 40, y: 22), hex(Theme.card, in: .aqua), within: 8))
 	}
 }
