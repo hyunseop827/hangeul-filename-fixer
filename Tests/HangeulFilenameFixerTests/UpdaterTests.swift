@@ -146,7 +146,7 @@ private let publishedTestKey = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 	}
 
 	/// With the placeholder for the key, without a feed or without both, Sparkle is never asked to start: no check,
-	/// no alert, nothing on the network. The menu item then has nothing to send.
+	/// no alert, nothing on the network. The menu item then has nothing to send, and the link cannot be used.
 	@Test func nothingIsStartedWithoutAFeedAndARealKey() {
 		var started = 0
 		let target = NSObject()
@@ -162,18 +162,18 @@ private let publishedTestKey = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 			UpdaterConfiguration(feedURL: nil, publicKey: nil)
 		] {
 			let updater = AppUpdater(configuration: configuration, start: start)
-			#expect(updater.check == nil && !updater.isAvailable)
+			#expect(updater.check == nil && !updater.isAvailable && !updater.canCheck)
 		}
 		#expect(started == 0)
 
-		// With both: started once, and what the start gives is what the menu item gets.
+		// With both: started once, and what the start gives is what the menu item gets; the link can be used.
 		let updater = AppUpdater(configuration: UpdaterConfiguration(feedURL: feedURL, publicKey: publishedTestKey), start: start)
 		#expect(started == 1)
-		#expect(updater.isAvailable && updater.check?.target === target)
+		#expect(updater.isAvailable && updater.check?.target === target && updater.canCheck)
 
 		// Sparkle did not start (it reported an error): no updater, and the app goes on without one.
 		let refused = AppUpdater(configuration: UpdaterConfiguration(feedURL: feedURL, publicKey: publishedTestKey), start: { nil })
-		#expect(refused.check == nil && !refused.isAvailable)
+		#expect(refused.check == nil && !refused.isAvailable && !refused.canCheck)
 	}
 
 	/// Under `swift test`, as under `swift run`, there is no app bundle: no feed, no key, and the app's own updater
@@ -181,7 +181,67 @@ private let publishedTestKey = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 	@Test func outsideTheAppBundleNothingIsStarted() {
 		let configuration = UpdaterConfiguration(bundle: .main)
 		#expect(configuration.feedURL == nil && configuration.publicKey == nil && !configuration.canStart)
-		#expect(AppUpdater.shared.check == nil && !AppUpdater.shared.isAvailable)
+		#expect(AppUpdater.shared.check == nil && !AppUpdater.shared.isAvailable && !AppUpdater.shared.canCheck)
+	}
+
+	/// Stands in for Sparkle's controller as the target of the check.
+	private final class CheckTarget: NSObject {
+		var checks = 0
+
+		@objc func checkForUpdates(_ sender: Any?) {
+			checks += 1
+		}
+	}
+
+	/// The link under the card sends the check the menu item sends, to the same target, as often as it is pressed
+	/// while a check can start. Without an updater it sends nothing.
+	@Test func theLinkSendsTheSameCheckAsTheMenuItem() {
+		_ = NSApplication.shared
+		let target = CheckTarget()
+		let check = UpdateCheck(target: target, action: #selector(CheckTarget.checkForUpdates(_:)))
+		let updater = AppUpdater(configuration: UpdaterConfiguration(feedURL: feedURL, publicKey: publishedTestKey), start: { check })
+		#expect(updater.canCheck)
+		updater.checkForUpdates()
+		updater.checkForUpdates()
+		#expect(target.checks == 2)
+
+		for none in [
+			AppUpdater(configuration: UpdaterConfiguration(feedURL: feedURL, publicKey: placeholderKey), start: { check }),
+			AppUpdater(configuration: UpdaterConfiguration(feedURL: feedURL, publicKey: publishedTestKey), start: { nil })
+		] {
+			#expect(!none.canCheck)
+			none.checkForUpdates()
+		}
+		#expect(target.checks == 2)
+	}
+
+	/// The link's text is the menu item's without the ellipsis, and its tooltip names this build's version (with the
+	/// build number, as the About panel shows them) and, while the link can be used, what a click does.
+	@Test func theLinkIsNamedLikeTheMenuItemAndItsTooltipNamesThisBuild() throws {
+		#expect(Exact(AppUpdater.linkName) == Exact("업데이트 확인"))
+		#expect(Exact(AppUpdater.help(version: "2.0.2 (16)")) == Exact("현재 버전 2.0.2 (16). 눌러서 업데이트를 확인합니다."))
+		#expect(Exact(AppUpdater.help(version: "2.0.2 (16)", enabled: false)) == Exact("현재 버전 2.0.2 (16)."))
+		#expect(Exact(AppUpdater.help(version: nil)) == Exact("눌러서 업데이트를 확인합니다."))
+		#expect(AppUpdater.help(version: nil, enabled: false).isEmpty)
+
+		// The version comes from the bundle's Info.plist: a small bundle made here with the repository's own values
+		// (2.0.2 and build 1), one without a build number, and one without a version. None under `swift test` itself.
+		let folders = TestFolders()
+		func bundle(_ values: [String: String]) throws -> Bundle {
+			let app = folders.work + "/\(UUID().uuidString).app"
+			mkdir(app, 0o755)
+			mkdir(app + "/Contents", 0o755)
+			let plist = try PropertyListSerialization.data(fromPropertyList: values, format: .xml, options: 0)
+			try plist.write(to: URL(fileURLWithPath: app + "/Contents/Info.plist"))
+			return try #require(Bundle(path: app))
+		}
+		let repository = try Repository.propertyList("Resources/Info.plist")
+		let version = try #require(repository["CFBundleShortVersionString"] as? String)
+		let build = try #require(repository["CFBundleVersion"] as? String)
+		#expect(try AppUpdater.version(of: bundle(["CFBundleShortVersionString": version, "CFBundleVersion": build])) == "\(version) (\(build))")
+		#expect(try AppUpdater.version(of: bundle(["CFBundleShortVersionString": "2.0.2"])) == "2.0.2")
+		#expect(try AppUpdater.version(of: bundle(["CFBundleVersion": "16"])) == nil)
+		#expect(AppUpdater.version(of: .main) == nil)
 	}
 
 	/// The app built from this repository starts its updater exactly when Resources/Info.plist holds a real key: not
@@ -196,19 +256,23 @@ private let publishedTestKey = "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo="
 	}
 
 	/// The menu item goes straight to Sparkle's controller, so the controller must be what answers for it: it has the
-	/// action, and it validates menu items (that is what disables the item while a check is running). And the app
-	/// starts the updater itself instead of letting the controller do it, whose failure would be an alert at every
-	/// launch.
+	/// action, and it validates menu items (that is what disables the item while a check is running). The link asks the
+	/// updater the same question (`canCheckForUpdates`, observed) and sends the same check. And the app starts the
+	/// updater itself instead of letting the controller do it, whose failure would be an alert at every launch.
 	@Test func sparklesControllerAnswersForTheMenuItem() throws {
 		let controller = try #require(NSClassFromString("SPUStandardUpdaterController") as? NSObject.Type, "Sparkle.framework is not loaded")
 		let answersTheAction = controller.instancesRespond(to: NSSelectorFromString("checkForUpdates:"))
 		let validatesTheItem = controller.instancesRespond(to: #selector(NSMenuItemValidation.validateMenuItem(_:)))
 		#expect(answersTheAction && validatesTheItem)
+		let updater = try #require(NSClassFromString("SPUUpdater") as? NSObject.Type)
+		#expect(updater.instancesRespond(to: NSSelectorFromString("canCheckForUpdates")), "the link follows SPUUpdater.canCheckForUpdates")
 
 		let source = try Repository.text("Sources/HangeulFilenameFixer/AppUpdater.swift")
 		#expect(source.contains("SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil)"))
 		#expect(source.contains("try controller.updater.start()"))
 		#expect(source.contains("UpdateCheck(target: controller, action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)))"))
+		#expect(source.contains(#"updater.observe(\.canCheckForUpdates, options: [.initial, .new])"#))
+		#expect(source.contains("_ = NSApp.sendAction(check.action, to: check.target, from: nil)"))
 		#expect(!source.contains("startingUpdater: true") && !source.contains("controller.startUpdater()"))
 		// Checks in the background and automatic downloads are Info.plist's to decide, not the code's.
 		for word in ["automaticallyChecksForUpdates", "automaticallyDownloadsUpdates", "updateCheckInterval", "checkForUpdatesInBackground", "setFeedURL", "sendsSystemProfile"] {

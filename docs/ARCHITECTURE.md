@@ -65,7 +65,7 @@ SwiftPM 패키지 하나에 Core 라이브러리와 앱 실행 파일, 그리고
 | `Sources/HangeulFilenameFixer/AppModel.swift` | 앱 | 화면 상태와 판단 전부. AppKit·SwiftUI를 import하지 않음 |
 | `…/HangeulFilenameFixerApp.swift` | 앱 | 진입점, `AppDelegate` |
 | `…/MainMenu.swift` | 앱 | 한국어 메뉴 막대. 앱 메뉴의 "업데이트 확인…" 포함 |
-| `…/AppUpdater.swift` | 앱 | 업데이트(Sparkle). Sparkle을 import하는 유일한 파일이고, 앱에서 네트워크를 쓰는 유일한 코드 |
+| `…/AppUpdater.swift` | 앱 | 업데이트(Sparkle). Sparkle을 import하는 유일한 파일이고, 앱에서 네트워크를 쓰는 유일한 코드. 창 아래 "업데이트 확인" 링크의 문구와 상태(`canCheck`)도 여기에 |
 | `…/MainWindowController.swift` | 앱 | 창, 파일·폴더 선택 창, Finder에서 보기, 창 높이 맞추기 |
 | `…/WindowFit.swift` | 앱 | 창 크기 계산 (순수 계산) |
 | `…/NotificationObservation.swift` | 앱 | 주인이 사라지면 스스로 해제되는 알림 관찰자 (이름 입력 칸의 편집기, 화면 영역 변경) |
@@ -75,7 +75,7 @@ SwiftPM 패키지 하나에 Core 라이브러리와 앱 실행 파일, 그리고
 - Core는 Foundation과 Darwin만 씁니다. 사본을 만들고 이름을 확인하는 코드는 전부 Core에 있습니다.
 - `AppModel`은 창을 직접 부르지 않습니다. 선택 창과 Finder는 `AppShell` 프로토콜, 파일 작업은 `FileWork` 값(기본은 Core의 두 함수)을 거칩니다. 테스트는 이 둘을 바꿔 끼워 창 없이 모델을 돌립니다.
 - Core의 문구는 앱 번들의 `Localizable.strings`에서 찾습니다(키가 한국어 문구 그대로). 번들이 없는 단위 테스트에서는 키가 그대로 나옵니다.
-- Core는 Sparkle도 업데이트도 모릅니다. `AppUpdater`는 `Info.plist`에 피드 주소(`SUFeedURL`)와 실제 공개 키(`SUPublicEDKey`, 32바이트의 base64)가 둘 다 있을 때만 Sparkle을 시작합니다(`UpdaterConfiguration.canStart`). 배포되는 앱의 피드 주소가 정해진 https 주소인지는 테스트와 `verify-dmg.sh`가 따로 확인합니다. 메뉴는 `MainMenu.make(updateCheck:)`로 "업데이트 확인…"이 누구에게 무엇을 보낼지(`UpdateCheck`)만 받습니다. 업데이터가 있으면 대상이 Sparkle의 컨트롤러라서 확인 중에는 Sparkle이 항목을 끄고, 업데이터가 없으면 동작이 없는 항목이라 AppKit이 꺼 둡니다.
+- Core는 Sparkle도 업데이트도 모릅니다. `AppUpdater`는 `Info.plist`에 피드 주소(`SUFeedURL`)와 실제 공개 키(`SUPublicEDKey`, 32바이트의 base64)가 둘 다 있을 때만 Sparkle을 시작합니다(`UpdaterConfiguration.canStart`). 배포되는 앱의 피드 주소가 정해진 https 주소인지는 테스트와 `verify-dmg.sh`가 따로 확인합니다. 메뉴는 `MainMenu.make(updateCheck:)`로 "업데이트 확인…"이 누구에게 무엇을 보낼지(`UpdateCheck`)만 받습니다. 업데이터가 있으면 대상이 Sparkle의 컨트롤러라서 확인 중에는 Sparkle이 항목을 끄고, 업데이터가 없으면 동작이 없는 항목이라 AppKit이 꺼 둡니다. 창 아래(카드 밑)의 "업데이트 확인" 링크(2.0.2부터, `RootView`)는 같은 `UpdateCheck`를 `AppUpdater.checkForUpdates()`로 보내고, 켜지고 꺼지는 것은 `AppUpdater.canCheck`(Sparkle의 `canCheckForUpdates`를 KVO로 따라감; 업데이터가 없으면 false)를 따릅니다. 툴팁에는 이 빌드의 버전과 빌드 번호가 들어갑니다.
 
 ### Core 공개 API
 
@@ -270,5 +270,5 @@ Core (`Tests/HangeulFilenameFixerCoreTests/`):
 | 공개 키가 자리표시자이면 업데이터를 시작하지 않는다 | Sparkle은 읽을 수 없는 키로는 시작하지 못하고, 표준 컨트롤러에 시작을 맡기면 그때마다 경고창을 띄웁니다. 키를 넣기 전의 빌드도 평소처럼 열려야 해서, 앱이 먼저 확인해 시작하지 않고 메뉴 항목만 꺼 둡니다. 시작은 앱이 직접 하고, 실패하면 경고창 없이 로그만 남깁니다. 그런 빌드가 릴리스되지 않도록 테스트와 릴리스 단계가 막습니다. |
 | ad-hoc 서명에 entitlement 하나, Sparkle의 XPC 서비스는 뺀다 | Apple Developer ID가 없어서 앱과 프레임워크가 같은 팀으로 서명되지 않습니다. 라이브러리 검증을 끄는 대신 실행 파일이 프레임워크를 번들 안에서만 찾게 했습니다(6장). XPC 서비스는 샌드박스 앱에만 필요합니다. |
 | 이름은 POSIX 호출과 바이트 비교로만 다룬다 | Foundation의 경로 API와 `String ==`는 NFC와 NFD를 섞습니다. 이 앱에서는 그 차이가 전부입니다. |
-| 창 높이는 내용에 맞추고, 전체 화면은 없다 | 첫 화면 아래에 의미 없이 큰 빈 공간이 생기지 않게 하려는 저장소 소유자의 결정입니다. 1.x와 일부러 다르게 한 화면 배치는 이것 하나입니다. |
+| 창 높이는 내용에 맞추고, 전체 화면은 없다 | 첫 화면 아래에 의미 없이 큰 빈 공간이 생기지 않게 하려는 저장소 소유자의 결정입니다. 1.x와 일부러 다르게 한 화면 배치는 이것과, 2.0.2에 카드 아래에 더한 "업데이트 확인" 링크 줄(`Theme.footerHeight`, 창 높이에 포함) 둘입니다. |
 | 언어는 한국어 하나 | 대상 사용자가 한국 사용자이고, `ko.lproj`만 넣으면 macOS가 채우는 문구까지 한국어로 맞춰집니다. |

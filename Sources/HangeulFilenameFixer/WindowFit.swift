@@ -16,10 +16,10 @@ enum WindowFit {
 		max(contentHeight + 2 * Theme.cardBorder, Theme.cardMinHeight)
 	}
 
-	/// The height of the window's content (below the title bar) that shows the whole card with the space above and
-	/// below it, in whole points.
+	/// The height of the window's content (below the title bar) that shows the whole card with the space above it, the
+	/// row with the link under it and the space below that, in whole points.
 	static func contentHeight(forCardContent cardContentHeight: CGFloat) -> CGFloat {
-		(Theme.windowPaddingTop + cardHeight(forContent: cardContentHeight) + Theme.windowPaddingBottom).rounded(.up)
+		(Theme.windowPaddingTop + cardHeight(forContent: cardContentHeight) + Theme.footerHeight + Theme.windowPaddingBottom).rounded(.up)
 	}
 
 	/// The window's frame once it is `height` tall (title bar included). The top-left corner stays where it is and the

@@ -271,6 +271,92 @@ private final class FakeUpdaterController: NSObject, NSMenuItemValidation {
 	}
 }
 
+/// The "업데이트 확인" link under the card: there on both screens, the updater's (its state and its check), and disabled
+/// without one, like the menu item. Read and pressed the way an assistive app does (ScreenReader): the link is a
+/// SwiftUI button and has no AppKit view of its own.
+@MainActor
+@Suite struct UpdateLinkTests {
+	let folders = TestFolders()
+
+	/// A feed and a key of the right shape, so the updater is "started" with the stand-in (nothing of Sparkle's).
+	private let configuration = UpdaterConfiguration(feedURL: "https://127.0.0.1/appcast.xml", publicKey: Data(repeating: 7, count: 32).base64EncodedString())
+
+	private func hostedScreen(_ model: AppModel, updater: AppUpdater) -> (hosting: NSHostingView<RootView>, window: NSWindow) {
+		let hosting = NSHostingView(rootView: RootView(model: model, updater: updater))
+		hosting.frame = NSRect(x: 0, y: 0, width: 470, height: 900)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: true)
+		window.isReleasedWhenClosed = false
+		window.contentView = hosting
+		settleScreen(hosting)
+		return (hosting, window)
+	}
+
+	@Test(.enabled("SwiftUI describes its views to assistive apps only; that is not possible here") { await ScreenReader.isAvailable })
+	func theLinkIsTheUpdatersOnBothScreens() async throws {
+		_ = NSApplication.shared
+		let target = FakeUpdaterController()
+		let check = UpdateCheck(target: target, action: #selector(FakeUpdaterController.checkForUpdates(_:)))
+		let updater = AppUpdater(configuration: configuration, start: { check })
+		let model = AppModel(conversions: ConversionTracker())
+		let (hosting, window) = hostedScreen(model, updater: updater)
+		_ = window
+
+		// The first screen: after the card's two elements, a button named like the menu item, without the ellipsis.
+		var reader = ScreenReader(hosting)
+		#expect(reader.identifiers == ["dropZone", "footer", "checkForUpdates"])
+		let link = try #require(reader["checkForUpdates"])
+		#expect(link.role == NSAccessibility.Role.button.rawValue)
+		#expect(Exact(link.label) == Exact("업데이트 확인"))
+		#expect(link.isEnabled)
+		// Under the card (AppKit's y points up), ending at the card's right edge: the drop zone stands 16 pt inside the
+		// card's 1 pt border.
+		let footer = try #require(reader["footer"])
+		let dropZone = try #require(reader["dropZone"])
+		#expect(link.frame.maxY <= footer.frame.minY, "\(link.frame) under \(footer.frame)")
+		#expect(link.frame.maxX == dropZone.frame.maxX + 17, "\(link.frame) at the right edge of the card around \(dropZone.frame)")
+		#expect(link.frame.height == Theme.smallLine)
+		#expect(findViews(PointerAreaView.self, in: hosting).map(\.cursor) == [.pointingHand], "the hand over the link")
+		link.press()
+		#expect(target.checks == 1)
+
+		// The screen for a selected file: the same link, after everything in the card.
+		model.setFile(try folders.writeSource(decomposed("한글 보고서.txt")))
+		await model.previewSettled()
+		settleScreen(hosting)
+		reader = ScreenReader(hosting)
+		#expect(reader.identifiers.first == "backButton" && reader.identifiers.last == "checkForUpdates")
+		#expect(reader["checkForUpdates"]?.isEnabled == true)
+		reader["checkForUpdates"]?.press()
+		#expect(target.checks == 2)
+		model.clearFile()
+		settleScreen(hosting)
+		#expect(ScreenReader(hosting).identifiers == ["dropZone", "footer", "checkForUpdates"])
+	}
+
+	/// Without an updater (no key for updates, or the app is not run from its bundle) the link is there and disabled,
+	/// and a press that arrives all the same (by automation) sends nothing.
+	@Test(.enabled("SwiftUI describes its views to assistive apps only; that is not possible here") { await ScreenReader.isAvailable })
+	func withoutAnUpdaterTheLinkIsDisabled() throws {
+		_ = NSApplication.shared
+		let target = FakeUpdaterController()
+		for updater in [
+			AppUpdater(configuration: UpdaterConfiguration(feedURL: nil, publicKey: nil), start: { UpdateCheck(target: target, action: #selector(FakeUpdaterController.checkForUpdates(_:))) }),
+			AppUpdater(configuration: configuration, start: { nil }),
+			AppUpdater.shared
+		] {
+			let (hosting, window) = hostedScreen(AppModel(conversions: ConversionTracker()), updater: updater)
+			_ = window
+			let reader = ScreenReader(hosting)
+			let link = try #require(reader["checkForUpdates"])
+			#expect(Exact(link.label) == Exact("업데이트 확인"))
+			#expect(!link.isEnabled)
+			#expect(findViews(PointerAreaView.self, in: hosting).map(\.cursor) == [.operationNotAllowed])
+			link.press()
+		}
+		#expect(target.checks == 0)
+	}
+}
+
 /// The observer that removes itself from the notification center.
 @Suite struct NotificationObservationTests {
 	@Test func theHandlerIsCalledOnlyWhileTheObservationLives() {

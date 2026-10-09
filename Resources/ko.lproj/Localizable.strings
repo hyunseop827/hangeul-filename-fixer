@@ -34,6 +34,13 @@
 "앞으로 모두 가져오기" = "앞으로 모두 가져오기";
 
 
+/* The link under the card (Sources/HangeulFilenameFixer/AppUpdater.swift): the same check as the menu item, and its
+   tooltip, which names this build's version ("현재 버전 2.0.2 (16).") before what a click does */
+"업데이트 확인" = "업데이트 확인";
+"현재 버전" = "현재 버전";
+"눌러서 업데이트를 확인합니다." = "눌러서 업데이트를 확인합니다.";
+
+
 /* First screen */
 "파일을 여기에 놓기" = "파일을 여기에 놓기";
 "또는 클릭해서 선택하세요. 한 번에 파일 하나만 처리합니다." = "또는 클릭해서 선택하세요. 한 번에 파일 하나만 처리합니다.";
