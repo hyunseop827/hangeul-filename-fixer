@@ -554,9 +554,16 @@ func contrastRatio(_ first: UInt32, _ second: UInt32) -> Double {
 /// True when two sRGB values differ by at most `tolerance` in each channel: what drawing through a bitmap's color
 /// space may change.
 func isClose(_ first: UInt32, _ second: UInt32, within tolerance: Int = 3) -> Bool {
-	(0..<3).allSatisfy { shift in
-		abs(Int((first >> (shift * 8)) & 0xFF) - Int((second >> (shift * 8)) & 0xFF)) <= tolerance
+	// One channel at a time, in small typed steps: Xcode 26.6's compiler gave up on the one-line form.
+	let shifts: [UInt32] = [0, 8, 16]
+	for shift in shifts {
+		let a = Int((first >> shift) & 0xFF)
+		let b = Int((second >> shift) & 0xFF)
+		if abs(a - b) > tolerance {
+			return false
+		}
 	}
+	return true
 }
 
 /// Draws a screen under an appearance into a bitmap, `scale` pixels per point, in a window that is never shown (it gives
