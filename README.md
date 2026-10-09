@@ -31,7 +31,7 @@ Windows 컴퓨터나 학교 교수님한테는 이렇게 깨져 보일 수 있�
 버전별 파일과 릴리스 노트는 [GitHub Releases](https://github.com/hyunseop827/hangeul-filename-fixer/releases)에 있습니다. 소스 코드는 이 저장소에 있습니다.
 
 **요구 사항:** macOS 12 Monterey 이상. Apple Silicon(M1 이상)과 Intel Mac을 모두 지원하는 유니버설 앱이고, DMG는 약 3MB입니다. 앱 화면과 메뉴는 한국어입니다.<br>
-업데이트 기능을 넣기 전의 2.0.0은 macOS 27을 쓰는 Apple Silicon Mac 한 대에서 직접 써 봤고, 업데이트 기능이 들어간 2.0.0 빌드는 자동 검사(CI, macOS 26)에서 Apple Silicon용과 Intel용(Rosetta)으로 켜지는 것을 확인했습니다. 설치된 앱에서 실제로 업데이트하는 것은 아직 해 보지 못했고, 2.0.1로 처음 시험합니다. 실제 Intel Mac과 macOS 12 ~ 25에서도 아직 실행해 보지 못했습니다.
+업데이트 기능을 넣기 전의 2.0.0은 macOS 27을 쓰는 Apple Silicon Mac 한 대에서 직접 써 봤고, 업데이트 기능이 들어간 2.0.0 빌드는 자동 검사(CI, macOS 26)에서 Apple Silicon용과 Intel용(Rosetta)으로 켜지는 것을 확인했습니다. 설치된 2.0.0이 앱 안에서 2.0.1로 업데이트되는 것은 2026-10-09에 Apple Silicon Mac(macOS 27)에서 확인했습니다. 실제 Intel Mac과 macOS 12 ~ 25에서는 아직 실행해 보지 못했습니다.
 
 현재 DMG는 개인이 배포하는 거라서 Apple의 공증을 받지 못했습니다.<br>
 처음 실행할 때 macOS가 `Apple이 악성 코드가 없음을 확인할 수 없습니다`라는 경고를 띄울 수 있습니다.<br>
@@ -65,12 +65,12 @@ open "/Applications/한글 파일명 정리기.app"
 
 2.0.0부터는 앱 안에서 업데이트할 수 있습니다. 새 DMG를 직접 받지 않아도 됩니다.
 
-- 메뉴 막대의 `한글 파일명 정리기` → `업데이트 확인…`을 누르면 바로 확인합니다. 앱이 켜져 있는 동안에는 하루에 한 번 앱이 스스로 확인하기도 합니다.
+- 메뉴 막대의 `한글 파일명 정리기` → `업데이트 확인…`을 누르거나, 창 아래의 `업데이트 확인` 링크(2.0.2부터)를 누르면 바로 확인합니다. 링크에 마우스를 올리면 지금 쓰는 버전이 보입니다. 앱이 켜져 있는 동안에는 하루에 한 번 앱이 스스로 확인하기도 합니다.
 - 새 버전이 있으면 바뀐 점을 보여주고 설치할지 물어봅니다. `업데이트 설치`를 골라야만 새 버전을 내려받고, 받은 파일의 서명을 확인한 뒤 앱을 바꾸고 다시 엽니다. 묻지 않고 설치하지 않습니다.
 - 앱은 꼭 `응용 프로그램` 폴더로 옮겨서 쓰세요. DMG 안에서 바로 열었거나 내려받은 자리에서 그대로 연 앱은 스스로 업데이트하지 못합니다.
 - **1.x(1.1.0까지)를 쓰고 있다면** 앱 안에 이 기능이 없습니다. 최신 DMG를 받아 `응용 프로그램` 폴더의 앱을 한 번만 직접 바꿔 주세요. 그 뒤로는 앱에서 업데이트하면 됩니다.
 
-2.0.0이 업데이트 기능이 들어간 첫 버전이라, 2.0.0에서 2.0.1로 올라가는 것이 첫 실제 업데이트입니다.
+2.0.0이 업데이트 기능이 들어간 첫 버전이라 2.0.0에서 2.0.1로 올라가는 것이 첫 실제 업데이트였고, 2026-10-09에 Apple Silicon Mac(macOS 27)에서 확인했습니다.
 
 ### 개인정보
 
@@ -261,7 +261,7 @@ Sources/
   HangeulFilenameFixer/       앱 (AppKit + SwiftUI)
     HangeulFilenameFixerApp.swift   앱 시작과 종료, 창 열기
     MainMenu.swift            한국어 메뉴 막대
-    AppUpdater.swift          업데이트 확인 (Sparkle). 앱에서 네트워크를 쓰는 유일한 코드
+    AppUpdater.swift          업데이트 확인 (Sparkle). 앱에서 네트워크를 쓰는 유일한 코드. 창 아래 링크의 문구와 상태도 여기에
     MainWindowController.swift      창, 파일·폴더 선택 창, Finder에서 보기
     WindowFit.swift           창 크기를 화면 내용에 맞추는 계산
     NotificationObservation.swift   주인이 사라지면 스스로 해제되는 알림 관찰자
@@ -319,7 +319,7 @@ docs/           아키텍처, AI 활용 기록, 코드 리뷰 기록
 
 **DMG 결과물은 `build/hangeul-filename-fixer-<버전>.dmg`에 만들어집니다.** 체크섬 파일(`.dmg.sha256`)도 옆에 생깁니다. Apple Silicon과 Intel을 모두 담은 유니버설 빌드입니다.
 
-업데이트 서명에 쓰는 키는 저장소 소유자만 만들고 보관합니다. 공개 키는 `Resources/Info.plist`에 들어 있습니다. 그 자리에 실제 키 대신 자리표시자(`PASTE_PUBLIC_KEY_FROM_generate_keys`)가 들어 있으면 테스트 하나가 일부러 실패하고, 그렇게 빌드한 앱은 업데이트를 확인하지 않습니다(`업데이트 확인…` 메뉴가 꺼져 있습니다). 자세한 내용은 [AGENTS.md](AGENTS.md)의 "In-app updates with Sparkle"에 있습니다.
+업데이트 서명에 쓰는 키는 저장소 소유자만 만들고 보관합니다. 공개 키는 `Resources/Info.plist`에 들어 있습니다. 그 자리에 실제 키 대신 자리표시자(`PASTE_PUBLIC_KEY_FROM_generate_keys`)가 들어 있으면 테스트 하나가 일부러 실패하고, 그렇게 빌드한 앱은 업데이트를 확인하지 않습니다(`업데이트 확인…` 메뉴와 창 아래의 `업데이트 확인` 링크가 꺼져 있습니다). 자세한 내용은 [AGENTS.md](AGENTS.md)의 "In-app updates with Sparkle"에 있습니다.
 
 ### 배포
 

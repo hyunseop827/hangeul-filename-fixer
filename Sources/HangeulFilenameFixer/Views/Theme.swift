@@ -63,6 +63,9 @@ enum Theme {
 	static let windowPaddingTop: CGFloat = 14
 	static let windowPaddingSide: CGFloat = 12
 	static let windowPaddingBottom: CGFloat = 10
+	/// The row under the card that holds the "업데이트 확인" link (RootView): the gap to the card and one line of the
+	/// small text, which stands at the row's bottom.
+	static let footerHeight: CGFloat = 22
 	static let cardMaxWidth: CGFloat = 900
 	static let cardMinHeight: CGFloat = 300
 	static let cardRadius: CGFloat = 18

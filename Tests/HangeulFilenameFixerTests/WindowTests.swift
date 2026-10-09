@@ -12,18 +12,19 @@ import HangeulFilenameFixerCore
 	private let visible = CGRect(x: 0, y: 60, width: 1440, height: 810)
 
 	@Test func theCardDecidesTheHeightOfTheContent() {
-		// The first screen's content is lower than the card's smallest height: 14 above, the card, 10 below.
+		// The first screen's content is lower than the card's smallest height: 14 above, the card, the 22 of the row with
+		// the update link, 10 below.
 		#expect(WindowFit.cardHeight(forContent: 0) == 300)
 		#expect(WindowFit.cardHeight(forContent: 286) == 300)
-		#expect(WindowFit.contentHeight(forCardContent: 286) == 324)
+		#expect(WindowFit.contentHeight(forCardContent: 286) == 346)
 		// The border (1 pt above and below) belongs to the card.
 		#expect(WindowFit.cardHeight(forContent: 298) == 300)
 		#expect(WindowFit.cardHeight(forContent: 299) == 301)
 		#expect(WindowFit.cardHeight(forContent: 700) == 702)
-		#expect(WindowFit.contentHeight(forCardContent: 700) == 726)
+		#expect(WindowFit.contentHeight(forCardContent: 700) == 748)
 		// Whole points, never less than the card needs.
-		#expect(WindowFit.contentHeight(forCardContent: 700.25) == 727)
-		#expect(WindowFit.contentHeight(forCardContent: 700.75) == 727)
+		#expect(WindowFit.contentHeight(forCardContent: 700.25) == 749)
+		#expect(WindowFit.contentHeight(forCardContent: 700.75) == 749)
 
 		#expect(WindowFit.initialWidth == 470)
 		#expect(WindowFit.minimumWidth == 440)
@@ -110,11 +111,12 @@ import HangeulFilenameFixerCore
 		let window = controller.window
 		let model = controller.model
 
-		// The first screen: the drop zone and the footer, in the card at its smallest height.
+		// The first screen: the drop zone and the footer, in the card at its smallest height, and the row with the update
+		// link under the card.
 		#expect(window.title == "한글 파일명 정리기")
 		#expect(controller.cardContentHeight > 250 && controller.cardContentHeight + 2 <= Theme.cardMinHeight)
 		let first = window.frame
-		#expect(window.contentRect(forFrameRect: first).size == NSSize(width: 470, height: 14 + 300 + 10))
+		#expect(window.contentRect(forFrameRect: first).size == NSSize(width: 470, height: 14 + 300 + 22 + 10))
 
 		// A file is selected: the window is as tall as the taller screen needs.
 		model.setFile(try folders.writeSource(decomposed("홍길동_보고서_진짜최종_찐최종.docx")))
@@ -165,7 +167,7 @@ import HangeulFilenameFixerCore
 			#expect(window.contentMaxSize.width >= 100_000)
 		}
 		expectHeightIsHeld()
-		#expect(window.contentRect(forFrameRect: window.frame).height == 324)
+		#expect(window.contentRect(forFrameRect: window.frame).height == 346)
 
 		controller.model.setFile(try folders.writeSource("report.txt"))
 		await controller.model.previewSettled()

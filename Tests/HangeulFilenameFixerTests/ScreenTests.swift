@@ -63,7 +63,8 @@ import HangeulFilenameFixerCore
 		var reader = screen()
 		#expect(reader.identifiers == [
 			"backButton", "finderName", "decomposedName", "windowsCompatibleName", "keepNameButton", "renameButton",
-			"resultLabel", "resultName", "outputDirectory", "outputDirectoryButton", "convertButton", "revealButton"
+			"resultLabel", "resultName", "outputDirectory", "outputDirectoryButton", "convertButton", "revealButton",
+			"checkForUpdates"
 		])
 		#expect(reader.plainTexts == [
 			"선택된 파일", "macOS Finder에서 보이는 이름", "macOS 현재 원본", "Windows에서 보일 수 있는 이름", "변환 후 Windows 호환 이름", "변환 후 Windows 예상",
@@ -87,9 +88,12 @@ import HangeulFilenameFixerCore
 		#expect(enabledButtons(reader) == ["backButton", "keepNameButton", "renameButton", "outputDirectoryButton", "convertButton"])
 		let field = try #require(findView(NameTextField.self, in: hosting))
 		#expect(!field.isEnabled)
-		// The pointer: a hand over what can be pressed, "not allowed" over the field and "Finder에서 보기".
+		// The pointer: a hand over what can be pressed, "not allowed" over the field, "Finder에서 보기" and the update link
+		// under the card (no updater under `swift test`: disabled, like the menu item).
 		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .pointingHand }.count == 5)
-		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 2)
+		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 3)
+		#expect(reader["checkForUpdates"]?.label == "업데이트 확인")
+		#expect(reader["checkForUpdates"]?.isEnabled == false)
 		// A file name is one line, however long the name.
 		let nameRowHeight = try #require(reader["resultName"]).frame.height
 		#expect(nameRowHeight > 15 && nameRowHeight < 25, "\(nameRowHeight)")
@@ -108,7 +112,7 @@ import HangeulFilenameFixerCore
 		#expect(field.isEnabled)
 		#expect(text("resultName", reader) == Exact(Wording.typeAName))
 		#expect(enabledButtons(reader) == ["backButton", "keepNameButton", "renameButton", "outputDirectoryButton"], "no copy without a name")
-		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 2, "the copy button and Finder")
+		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 3, "the copy button, Finder and the update link")
 
 		reader["keepNameButton"]?.press()
 		#expect(model.nameMode == .keep)
@@ -138,7 +142,7 @@ import HangeulFilenameFixerCore
 		#expect(enabledButtons(reader) == [], "nothing can be changed while the copy is being made")
 		#expect(!field.isEnabled)
 		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .pointingHand }.isEmpty)
-		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 7)
+		#expect(findViews(PointerAreaView.self, in: hosting).filter { $0.cursor == .operationNotAllowed }.count == 8)
 		// Pressed all the same: nothing happens.
 		for identifier in ["backButton", "renameButton", "outputDirectoryButton", "convertButton", "revealButton"] {
 			reader[identifier]?.press()
@@ -170,7 +174,7 @@ import HangeulFilenameFixerCore
 		#expect(model.sourcePath == nil)
 		reader = screen()
 		#expect(findView(DropTargetView.self, in: hosting) != nil)
-		#expect(reader.identifiers == ["dropZone", "footer"])
+		#expect(reader.identifiers == ["dropZone", "footer", "checkForUpdates"], "the update link is under the card on this screen too")
 		#expect(text("footer", reader) == Exact("분리된 한글 파일명을 Windows 호환 이름으로 정리합니다."))
 	}
 

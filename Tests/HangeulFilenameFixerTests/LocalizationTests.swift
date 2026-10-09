@@ -320,6 +320,9 @@ import Testing
 			"사본을 만드는 중입니다…",
 			"완료되었습니다. 저장된 파일명이 NFC인지 확인했습니다."
 		]),
+		// The link under the card (new in 2.0.2): the menu item's words without the ellipsis, then its tooltip, which
+		// names this build's version ("현재 버전 2.0.2 (16).") before what a click does.
+		("AppUpdater.swift", ["업데이트 확인", "현재 버전", "눌러서 업데이트를 확인합니다."]),
 		// The tooltips of the nine file icons.
 		("FileIconType.swift", ["Word 문서", "한글 문서", "PDF 문서", "PowerPoint 문서", "스프레드시트", "텍스트 문서", "이미지 파일", "압축 파일", "일반 파일"]),
 		// The menu bar (not in the old app, whose menu bar was Electron's English one). "업데이트 확인…" is new in 2.0.0:

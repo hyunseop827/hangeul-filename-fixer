@@ -36,7 +36,7 @@ Versioned files and release notes are on [GitHub Releases](https://github.com/hy
 The DMG file is distributed through GitHub Releases, not committed directly to the repository.
 
 **Requirements:** macOS 12 Monterey or later. It is a universal app for both Apple Silicon (M1 or later) and Intel Macs, and the DMG is about 3 MB. The app UI and menus are in Korean.
-Before the in-app updater was added, 2.0.0 was used by hand on one Apple Silicon Mac with macOS 27, and the automated checks (CI, macOS 26) started the 2.0.0 build that includes the updater as an Apple Silicon app and as an Intel app (under Rosetta). A real in-app update from an installed copy has not been done yet; it will be tested with 2.0.1. The app has also not been run on a real Intel Mac or on macOS 12 to 25 yet.
+Before the in-app updater was added, 2.0.0 was used by hand on one Apple Silicon Mac with macOS 27, and the automated checks (CI, macOS 26) started the 2.0.0 build that includes the updater as an Apple Silicon app and as an Intel app (under Rosetta). The in-app update of an installed 2.0.0 to 2.0.1 was confirmed on 2026-10-09 on an Apple Silicon Mac with macOS 27. The app has not been run on a real Intel Mac or on macOS 12 to 25 yet.
 
 This is a personal ad-hoc signed build and is not notarized by Apple.
 Because of that, macOS may show a warning saying Apple cannot verify that the app is free from malware.
@@ -70,12 +70,12 @@ This only removes the macOS quarantine flag from the downloaded app. Run it only
 
 From 2.0.0 on, the app updates from inside the app. You do not need to download a new DMG.
 
-- Choose `한글 파일명 정리기` → `업데이트 확인…` (Check for Updates…) in the menu bar to check right away. While it is running, the app also checks once a day on its own.
+- Choose `한글 파일명 정리기` → `업데이트 확인…` (Check for Updates…) in the menu bar, or click the `업데이트 확인` (Check for Updates) link at the bottom of the window (from 2.0.2), to check right away; the link's tooltip names the version you are using. While it is running, the app also checks once a day on its own.
 - When there is a newer version, it shows what changed and asks. Only when you choose `업데이트 설치` (Install Update) does it download the new version, verify its signature, replace the app and reopen it. It never installs without asking.
 - Keep the app in Applications. An app opened inside the DMG, or from where it was downloaded, cannot update itself.
 - **If you use 1.x (up to 1.1.0)**, the app has no updater. Download the latest DMG and replace the app in Applications by hand once; after that, update from the app.
 
-2.0.0 is the first version with the updater, so the first real update is the one from 2.0.0 to 2.0.1.
+2.0.0 is the first version with the updater, so the first real update was the one from 2.0.0 to 2.0.1; it was confirmed on 2026-10-09 on an Apple Silicon Mac with macOS 27.
 
 ### Privacy
 
@@ -202,7 +202,7 @@ Requirements: macOS with Xcode 26 or later (Swift 6.2 or later). The app is a Sw
 
 The filename rules are in [Sources/HangeulFilenameFixerCore/Naming.swift](Sources/HangeulFilenameFixerCore/Naming.swift), and copying and verification in [Sources/HangeulFilenameFixerCore/FileCopy.swift](Sources/HangeulFilenameFixerCore/FileCopy.swift). The app itself (AppKit + SwiftUI) is under `Sources/HangeulFilenameFixer/`; `AppUpdater.swift` there is the update check and the app's only network code. Two scripts are used only by the release: `scripts/make-appcast.sh` signs the DMG and writes the update feed (`appcast.xml`), and `scripts/ed25519-verify.swift` checks that signature against the app's public key. `scripts/check-release-tools.sh` runs both without a signing key, on every pull request.
 
-Only the repository owner creates and keeps the key that signs updates. The public key is in `Resources/Info.plist`. If a placeholder (`PASTE_PUBLIC_KEY_FROM_generate_keys`) stands there instead of a real key, one test fails on purpose and an app built that way does not check for updates (its `업데이트 확인…` menu item is disabled). See "In-app updates with Sparkle" in [AGENTS.md](AGENTS.md).
+Only the repository owner creates and keeps the key that signs updates. The public key is in `Resources/Info.plist`. If a placeholder (`PASTE_PUBLIC_KEY_FROM_generate_keys`) stands there instead of a real key, one test fails on purpose and an app built that way does not check for updates (its `업데이트 확인…` menu item and the `업데이트 확인` link at the bottom of the window are disabled). See "In-app updates with Sparkle" in [AGENTS.md](AGENTS.md).
 
 Contributor and AI-agent notes are in [AGENTS.md](AGENTS.md). Architecture notes are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Korean).
 

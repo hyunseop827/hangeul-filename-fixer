@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		// The updater starts with the app (AppUpdater.swift says what that does and does not send), and
-		// "업데이트 확인…" in the app menu is wired to it.
+		// "업데이트 확인…" in the app menu is wired to it. (The "업데이트 확인" link under the card asks it itself: RootView.)
 		NSApp.mainMenu = MainMenu.make(updateCheck: AppUpdater.shared.check)
 		// Not activated here: macOS brings an app to the front when the user opens it, and leaves it in the background
 		// when it was asked to (`open -g`).

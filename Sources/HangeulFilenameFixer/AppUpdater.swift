@@ -1,5 +1,5 @@
-// 앱 메뉴 > "업데이트 확인…": Sparkle 2's standard updater. The only code of the app that uses the network, and the only
-// file that imports Sparkle.
+// 앱 메뉴 > "업데이트 확인…" and the "업데이트 확인" link under the card (RootView): Sparkle 2's standard updater. The only
+// code of the app that uses the network, and the only file that imports Sparkle.
 //
 // What goes over the network, and when:
 // - The feed. Once a day at most, and only while the app is running (Sparkle's default interval; Info.plist sets
@@ -27,6 +27,7 @@
 // English; and the small progress window of the helper that installs an update, a program of its own, follows the
 // system language.
 import AppKit
+import Combine
 import Sparkle
 
 /// What Info.plist says about updates, and the decision whether that is enough to start the updater. Values only, so
@@ -78,19 +79,24 @@ struct UpdaterConfiguration {
 	}
 }
 
-/// What the "업데이트 확인…" menu item sends, and to whom.
+/// What the two update controls (the menu item and the link) send, and to whom: Sparkle's controller and its
+/// `checkForUpdates(_:)` in the app (the value also keeps the controller alive), any object in the tests.
 struct UpdateCheck {
 	let target: AnyObject
 	let action: Selector
 }
 
 @MainActor
-final class AppUpdater {
+final class AppUpdater: ObservableObject {
 	static let shared = AppUpdater()
 
 	/// Nil when no updater was started: outside an app bundle, without a feed, with the placeholder for the key, or
-	/// when Sparkle could not start. The menu item is then disabled, and nothing is ever asked of the network.
+	/// when Sparkle could not start. Both controls are then disabled, and nothing is ever asked of the network.
 	let check: UpdateCheck?
+	/// Whether a check can start now: false without an updater, and while Sparkle's window shows a check or an update
+	/// (`SPUUpdater.canCheckForUpdates`, the same answer the controller gives for the menu item). The link follows it.
+	@Published private(set) var canCheck: Bool
+	private var observation: NSKeyValueObservation?
 
 	/// `start` is only called when the configuration allows it. (A value, so the unit tests can ask without Sparkle.)
 	init(
@@ -98,10 +104,33 @@ final class AppUpdater {
 		start: @MainActor () -> UpdateCheck? = AppUpdater.startSparkle
 	) {
 		check = configuration.canStart ? start() : nil
+		canCheck = check != nil
+		guard let updater = (check?.target as? SPUStandardUpdaterController)?.updater else {
+			return
+		}
+
+		observation = updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+			// Sparkle changes it on the main thread.
+			MainActor.assumeIsolated {
+				self?.canCheck = updater.canCheckForUpdates
+			}
+		}
 	}
 
 	var isAvailable: Bool {
 		check != nil
+	}
+
+	/// The link's press: the check the menu item sends, to the same target (a check the user asked for, whose window
+	/// says what it found or that this is the latest version). Nothing without an updater, and nothing while a check
+	/// cannot start: the link is disabled then, and a press that arrives all the same (by automation) does as little as
+	/// the disabled menu item.
+	func checkForUpdates() {
+		guard let check, canCheck else {
+			return
+		}
+
+		_ = NSApp.sendAction(check.action, to: check.target, from: nil)
 	}
 
 	/// Starts Sparkle's updater for the main bundle. Starting reads the settings and schedules the daily check: when
@@ -111,7 +140,7 @@ final class AppUpdater {
 	///
 	/// The controller is made without starting it, and the updater is started here: started by the controller, a
 	/// failure would put Sparkle's "업데이트를 확인할 수 없습니다." alert on the screen at every launch, about
-	/// something the user cannot change. A failure is logged instead, and the menu item stays disabled.
+	/// something the user cannot change. A failure is logged instead, and both controls stay disabled.
 	///
 	/// The menu item goes straight to the controller's `checkForUpdates(_:)`: a check the user asked for, whose
 	/// window says what it found (or that this is the latest version). The controller validates the item itself and
@@ -126,5 +155,31 @@ final class AppUpdater {
 		}
 
 		return UpdateCheck(target: controller, action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)))
+	}
+
+	// MARK: The link's texts
+
+	/// The link's text: the menu item's words without the ellipsis (the version is in its tooltip).
+	static var linkName: String {
+		String(localized: "업데이트 확인")
+	}
+
+	/// This build's version with its build number, as the About panel shows them ("2.0.2 (16)"); nil outside an app
+	/// bundle (`swift run`, the unit tests), where the bundle has no Info.plist of the app.
+	static func version(of bundle: Bundle) -> String? {
+		guard let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+			return nil
+		}
+
+		let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+		return build.map { "\(version) (\($0))" } ?? version
+	}
+
+	/// The link's tooltip: which version this is and, while the link can be used, what a click does. A disabled link
+	/// (no updater, or Sparkle's window is already checking) names only the version.
+	static func help(version: String? = version(of: .main), enabled: Bool = true) -> String {
+		let about = version.map { String(localized: "현재 버전") + " " + $0 + "." }
+		let action = enabled ? String(localized: "눌러서 업데이트를 확인합니다.") : nil
+		return [about, action].compactMap { $0 }.joined(separator: " ")
 	}
 }
