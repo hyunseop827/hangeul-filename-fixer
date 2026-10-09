@@ -11,11 +11,14 @@ xcuserdata/
 /build/
 
 # Release outputs and signing material: a copy made anywhere else must not be committed either.
+# (The exported Sparkle private key file is named <repo>.key; *.key and *.pem cover it and other private keys.)
 *.dmg
 *.dmg.sha256
 *.p12
 *.p8
 *.cer
+*.key
+*.pem
 *.provisionprofile
 
 # personal AI assistant settings

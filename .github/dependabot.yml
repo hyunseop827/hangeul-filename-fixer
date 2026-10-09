@@ -1,0 +1,10 @@
+# Keeps the actions pinned by commit SHA in .github/workflows/*.yml current: Dependabot opens a pull request when a
+# pinned action (actions/checkout) has a new release, and updates the SHA and the version comment together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
