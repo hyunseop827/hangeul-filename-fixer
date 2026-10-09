@@ -152,8 +152,8 @@ struct NameModeButton: View {
 				.frame(maxWidth: .infinity, minHeight: 35)
 				.background(
 					shape
-						.fill(isSelected ? Theme.card : Color.clear)
-						.shadow(color: isSelected ? Theme.text.opacity(0.12) : Color.clear, radius: 2, x: 0, y: 1)
+						.fill(isSelected ? Theme.selectedSegment : Color.clear)
+						.shadow(color: isSelected ? Theme.segmentShadow : Color.clear, radius: 2, x: 0, y: 1)
 				)
 				.contentShape(shape)
 		}
@@ -169,7 +169,7 @@ struct ActionButton: View {
 	enum Kind {
 		/// Filled with the app's color.
 		case primary
-		/// White with a thin border.
+		/// The card's color with a thin border.
 		case secondary
 	}
 
@@ -186,7 +186,7 @@ struct ActionButton: View {
 		Button(action: action) {
 			Text(verbatim: title)
 				.font(Theme.font(size: 12, weight: .heavy))
-				.foregroundColor(kind == .primary ? Theme.card : Theme.text)
+				.foregroundColor(kind == .primary ? Theme.onPrimary : Theme.text)
 				.lineLimit(1)
 				.truncationMode(.tail)
 				.padding(.horizontal, kind == .primary ? 10 : 11)

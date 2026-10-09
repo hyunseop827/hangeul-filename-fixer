@@ -499,3 +499,104 @@ struct ScreenReader {
 		return ScreenReader(probe)["screenReaderProbe"]?.value == "probe"
 	}()
 }
+
+// MARK: - Colors and appearances
+
+/// The sRGB value (0xRRGGBB) a color is drawn with under an appearance, without its opacity. A color of the screen
+/// (Theme) has one value under the light appearance and another under the dark one.
+@MainActor
+func hex(_ color: NSColor, in appearance: NSAppearance.Name) -> UInt32 {
+	let resolved = resolve(color, in: appearance)
+	func channel(_ value: CGFloat) -> UInt32 {
+		UInt32((value * 255).rounded())
+	}
+	return channel(resolved.redComponent) << 16 | channel(resolved.greenComponent) << 8 | channel(resolved.blueComponent)
+}
+
+@MainActor
+func hex(_ color: Color, in appearance: NSAppearance.Name) -> UInt32 {
+	hex(NSColor(color), in: appearance)
+}
+
+/// The opacity a color is drawn with under an appearance.
+@MainActor
+func opacity(_ color: Color, in appearance: NSAppearance.Name) -> CGFloat {
+	resolve(NSColor(color), in: appearance).alphaComponent
+}
+
+/// The color as AppKit draws it under `appearance`, in sRGB: a dynamic color is asked for its value the way a view
+/// of that appearance asks.
+@MainActor
+private func resolve(_ color: NSColor, in appearance: NSAppearance.Name) -> NSColor {
+	var resolved = color
+	NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
+		resolved = color.usingColorSpace(.sRGB) ?? color
+	}
+	return resolved
+}
+
+/// The relative luminance of an opaque sRGB color (0xRRGGBB), 0 for black and 1 for white, as WCAG 2 defines it.
+func luminance(_ hex: UInt32) -> Double {
+	func channel(_ value: UInt32) -> Double {
+		let fraction = Double(value & 0xFF) / 255
+		return fraction <= 0.03928 ? fraction / 12.92 : pow((fraction + 0.055) / 1.055, 2.4)
+	}
+	return 0.2126 * channel(hex >> 16) + 0.7152 * channel(hex >> 8) + 0.0722 * channel(hex)
+}
+
+/// The WCAG 2 contrast ratio of two opaque sRGB colors: 1 for the same color, 21 for black on white. 4.5 is what AA
+/// asks of body text, 3 of large text.
+func contrastRatio(_ first: UInt32, _ second: UInt32) -> Double {
+	let (lighter, darker) = (max(luminance(first), luminance(second)), min(luminance(first), luminance(second)))
+	return (lighter + 0.05) / (darker + 0.05)
+}
+
+/// True when two sRGB values differ by at most `tolerance` in each channel: what drawing through a bitmap's color
+/// space may change.
+func isClose(_ first: UInt32, _ second: UInt32, within tolerance: Int = 3) -> Bool {
+	(0..<3).allSatisfy { shift in
+		abs(Int((first >> (shift * 8)) & 0xFF) - Int((second >> (shift * 8)) & 0xFF)) <= tolerance
+	}
+}
+
+/// Draws a screen under an appearance into a bitmap, `scale` pixels per point, in a window that is never shown (it gives
+/// the views a backing store to draw into). The view is left in that window.
+@MainActor
+func render(_ view: NSView, appearance: NSAppearance.Name, scale: CGFloat = 2) -> NSBitmapImageRep? {
+	let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: true)
+	window.isReleasedWhenClosed = false
+	window.appearance = NSAppearance(named: appearance)
+	view.appearance = NSAppearance(named: appearance)
+	window.contentView = view
+	view.layoutSubtreeIfNeeded()
+	RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+	let size = view.bounds.size
+	guard let bitmap = NSBitmapImageRep(
+		bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
+		samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0
+	) else {
+		return nil
+	}
+
+	bitmap.size = size
+	view.cacheDisplay(in: view.bounds, to: bitmap)
+	return bitmap
+}
+
+extension NSBitmapImageRep {
+	/// The sRGB value of the pixel at a point (in points, from the top-left corner), without its opacity.
+	@MainActor
+	func hex(atX x: CGFloat, y: CGFloat) -> UInt32 {
+		let scale = CGFloat(pixelsWide) / size.width
+		guard let color = colorAt(x: Int(x * scale), y: Int(y * scale)) else {
+			return 0
+		}
+
+		return HangeulFilenameFixerTests.hex(color, in: .aqua)
+	}
+
+	func pngData() -> Data? {
+		representation(using: .png, properties: [:])
+	}
+}

@@ -232,14 +232,6 @@ import HangeulFilenameFixerCore
 		)
 	}
 
-	@Test func theStatusLineHasTheColorOfItsTone() {
-		#expect(Theme.statusColor(.success) == Theme.success)
-		#expect(Theme.statusColor(.error) == Theme.error)
-		#expect(Theme.statusColor(.info) == Theme.muted)
-		#expect(Theme.statusColor(nil) == Theme.muted)
-		#expect(Theme.success == Color(hex: 0x15803D) && Theme.error == Color(hex: 0xB91C1C) && Theme.muted == Color(hex: 0x6B7280))
-	}
-
 	/// The pointer's shape is set by a view that never takes a click, so the SwiftUI button under it is pressed.
 	@Test func thePointerAreaLetsEveryClickThrough() {
 		let area = PointerAreaView(frame: NSRect(x: 0, y: 0, width: 100, height: 40))

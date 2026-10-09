@@ -49,8 +49,8 @@ final class MainWindowController: NSObject, NSWindowDelegate, AppShell {
 		window.collectionBehavior = [.fullScreenNone]
 		// The two screens have different views; Tab must find the ones that are there now.
 		window.autorecalculatesKeyViewLoop = true
-		// The screen is light also when the system is dark: the window, its title bar and its panels.
-		window.appearance = NSAppearance(named: .aqua)
+		// The window follows the system's appearance (light or dark), and with it its title bar and its panels; the
+		// screen's colors have a value for each (Theme). Nothing is set here, so a change while the app runs is taken up.
 		window.backgroundColor = Theme.windowBackground
 		window.delegate = self
 

@@ -157,7 +157,9 @@ import HangeulFilenameFixerCore
 		#expect(window.standardWindowButton(.zoomButton)?.isEnabled == true)
 		#expect(!window.isRestorable)
 		#expect(window.tabbingMode == .disallowed)
-		#expect(window.appearance?.name == .aqua)
+		// The window follows the system's appearance, light or dark (nothing of its own is set); the colors are dynamic.
+		#expect(window.appearance == nil)
+		#expect(window.backgroundColor == Theme.windowBackground)
 
 		// The smallest and the largest height are the content's; the width starts at 440 and has no end.
 		func expectHeightIsHeld() {

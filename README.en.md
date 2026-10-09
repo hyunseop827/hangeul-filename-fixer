@@ -117,7 +117,8 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
   <img src="images/file-select.png" alt="Select file screen" width="620" />
 </p>
 
-The window fits its content. It gets taller once a file is selected, and only its width can be resized.
+The window fits its content. It gets taller once a file is selected, and only its width can be resized.<br>
+The app follows the system appearance, light or dark (since 2.1.0). The screenshots in this document show light mode.
 
 ### Choose the Output Name
 
