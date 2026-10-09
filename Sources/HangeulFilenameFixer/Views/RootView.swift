@@ -1,7 +1,7 @@
-// The window's content: one white card on the light background, and under it a row with the "업데이트 확인" link. The
-// card is as tall as what it holds, at least `Theme.cardMinHeight`, and the window makes itself as tall as the card and
-// the row need (MainWindowController). Only where the screen is too small for that is the card cut off at the window's
-// height; what does not fit then scrolls inside it, and the row stays under the card.
+// The window's content: one card on the background (light or dark with the system; Theme), and under it a row with the
+// "업데이트 확인" link. The card is as tall as what it holds, at least `Theme.cardMinHeight`, and the window makes itself
+// as tall as the card and the row need (MainWindowController). Only where the screen is too small for that is the card
+// cut off at the window's height; what does not fit then scrolls inside it, and the row stays under the card.
 import SwiftUI
 
 struct RootView: View {
@@ -55,7 +55,7 @@ struct RootView: View {
 		.clipShape(shape)
 		.overlay(shape.strokeBorder(Theme.line, lineWidth: 1))
 		// Under the clipped card, so the shadow itself is not clipped.
-		.background(shape.fill(Theme.card).shadow(color: Theme.text.opacity(0.08), radius: 20, x: 0, y: 18))
+		.background(shape.fill(Theme.card).shadow(color: Theme.cardShadow, radius: 20, x: 0, y: 18))
 	}
 
 	@ViewBuilder private var content: some View {

@@ -1,4 +1,7 @@
-// Colors and sizes of the screen. The app is light in dark mode too, so every color is a fixed sRGB value.
+// Colors and sizes of the screen. The window follows the system appearance (since 2.1.0), so every color has two
+// values: the light one, which is the color the app had when it was light only, and a dark one. `NSColor(name:
+// dynamicProvider:)` picks the value by the appearance the color is drawn in (`dynamicColor`), and the SwiftUI colors
+// wrap those AppKit colors (`Color(nsColor:)`), so the two palettes are written out here once, side by side.
 import AppKit
 import SwiftUI
 
@@ -6,29 +9,41 @@ enum Theme {
 	// MARK: Colors
 
 	/// The window behind the card.
-	static let background = Color(hex: 0xF8FAFC)
-	static let card = Color(hex: 0xFFFFFF)
-	static let primary = Color(hex: 0x4F46E5)
-	static let success = Color(hex: 0x15803D)
-	static let warning = Color(hex: 0xF59E0B)
-	static let error = Color(hex: 0xB91C1C)
-	static let text = Color(hex: 0x111827)
-	static let muted = Color(hex: 0x6B7280)
-	static let line = Color(hex: 0xE5E7EB)
-	static let soft = Color(hex: 0xF1F5F9)
-	static let primarySoft = Color(hex: 0xEEF2FF)
+	static let background = dynamic(light: 0xF8FAFC, dark: 0x0F172A)
+	static let card = dynamic(light: 0xFFFFFF, dark: 0x1E293B)
+	static let primary = dynamic(light: 0x4F46E5, dark: 0x818CF8)
+	/// The text on a `primary` fill ("NFC 사본 만들기"): white in light, where the fill is deep; the window's dark in dark,
+	/// where the fill is the lighter one.
+	static let onPrimary = dynamic(light: 0xFFFFFF, dark: 0x0F172A)
+	static let success = dynamic(light: 0x15803D, dark: 0x4ADE80)
+	static let warning = dynamic(light: 0xF59E0B, dark: 0xFBBF24)
+	static let error = dynamic(light: 0xB91C1C, dark: 0xF87171)
+	static let text = dynamic(light: 0x111827, dark: 0xF1F5F9)
+	static let muted = dynamic(light: 0x6B7280, dark: 0x94A3B8)
+	static let line = dynamic(light: 0xE5E7EB, dark: 0x334155)
+	static let soft = dynamic(light: 0xF1F5F9, dark: 0x273449)
+	static let primarySoft = dynamic(light: 0xEEF2FF, dark: 0x312E81)
+	/// The chosen half of the "기존 이름 유지 / 이름 바꾸기" switch: the card's white in light; in dark a step lighter than
+	/// the `soft` track it stands on, so it is raised in both.
+	static let selectedSegment = dynamic(light: 0xFFFFFF, dark: 0x334155)
+	/// The shadows under the card and under the chosen half of the switch: a little of the text's color in light, black
+	/// in dark, where a shadow has to be deeper to be seen.
+	static let cardShadow = dynamic(light: 0x111827, dark: 0x000000, lightAlpha: 0.08, darkAlpha: 0.45)
+	static let segmentShadow = dynamic(light: 0x111827, dark: 0x000000, lightAlpha: 0.12, darkAlpha: 0.5)
 
-	static let dropZoneFill = Color(hex: 0xFBFDFF)
-	static let dropZoneBorder = Color(hex: 0xCBD5E1)
+	static let dropZoneFill = dynamic(light: 0xFBFDFF, dark: 0x1B2435)
+	static let dropZoneBorder = dynamic(light: 0xCBD5E1, dark: 0x475569)
 	/// The border of the name field and of the result box.
-	static let fieldBorder = Color(hex: 0xD1D5DB)
+	static let fieldBorder = dynamic(light: 0xD1D5DB, dark: 0x475569)
 	/// The glow around the name field while it is being edited.
-	static let focusGlow = Color(hex: 0x4F46E5).opacity(0.14)
+	static let focusGlow = dynamic(light: 0x4F46E5, dark: 0x818CF8, lightAlpha: 0.14, darkAlpha: 0.22)
 	/// The name field's fill while it cannot be edited.
-	static let disabledFieldFill = Color(.sRGB, red: 239 / 255, green: 239 / 255, blue: 239 / 255, opacity: 0.3)
-	static let placeholder = NSColor(srgbRed: 0x75 / 255, green: 0x75 / 255, blue: 0x75 / 255, alpha: 1)
-	static let fieldText = NSColor(srgbRed: 0x11 / 255, green: 0x18 / 255, blue: 0x27 / 255, alpha: 1)
-	static let windowBackground = NSColor(srgbRed: 0xF8 / 255, green: 0xFA / 255, blue: 0xFC / 255, alpha: 1)
+	static let disabledFieldFill = dynamic(light: 0xEFEFEF, dark: 0x334155, lightAlpha: 0.3, darkAlpha: 0.3)
+	/// The name field's own colors, for AppKit: its placeholder, and its text and text cursor (the text's color).
+	static let placeholder = dynamicColor(light: 0x757575, dark: 0x94A3B8)
+	static let fieldText = dynamicColor(light: 0x111827, dark: 0xF1F5F9)
+	/// The window's own color, for AppKit: `background`.
+	static let windowBackground = dynamicColor(light: 0xF8FAFC, dark: 0x0F172A)
 
 	/// What a control that cannot be used looks like: faded, not recolored.
 	static let disabledOpacity = 0.48
@@ -42,18 +57,42 @@ enum Theme {
 		}
 	}
 
-	/// The tile behind a file icon, and the color of its label when the image is missing.
+	/// The tile behind a file icon, and the color of its label when the image is missing. In dark the tiles are deep
+	/// versions of their light tints, and the labels are the light labels brightened.
 	static func tileColors(_ kind: FileIconType.Kind) -> (fill: Color, label: Color) {
 		switch kind {
-		case .word: return (Color(hex: 0xEFF6FF), Color(hex: 0x2563EB))
-		case .hwp: return (Color(hex: 0xECFDF5), Color(hex: 0x059669))
-		case .pdf: return (Color(hex: 0xFEF2F2), Color(hex: 0xDC2626))
-		case .powerPoint: return (Color(hex: 0xFFF7ED), Color(hex: 0xEA580C))
-		case .sheet: return (Color(hex: 0xF0FDF4), Color(hex: 0x16A34A))
+		case .word: return wordTile
+		case .hwp: return hwpTile
+		case .pdf: return pdfTile
+		case .powerPoint: return powerPointTile
+		case .sheet: return sheetTile
 		case .text: return (soft, text)
 		case .image: return (primarySoft, primary)
-		case .archive: return (Color(hex: 0xFFFBEB), warning)
+		case .archive: return archiveTile
 		case .generic: return (primarySoft, primary)
+		}
+	}
+
+	private static let wordTile = (fill: dynamic(light: 0xEFF6FF, dark: 0x1E3A8A), label: dynamic(light: 0x2563EB, dark: 0x93C5FD))
+	private static let hwpTile = (fill: dynamic(light: 0xECFDF5, dark: 0x064E3B), label: dynamic(light: 0x059669, dark: 0x6EE7B7))
+	private static let pdfTile = (fill: dynamic(light: 0xFEF2F2, dark: 0x7F1D1D), label: dynamic(light: 0xDC2626, dark: 0xFCA5A5))
+	private static let powerPointTile = (fill: dynamic(light: 0xFFF7ED, dark: 0x7C2D12), label: dynamic(light: 0xEA580C, dark: 0xFDBA74))
+	private static let sheetTile = (fill: dynamic(light: 0xF0FDF4, dark: 0x14532D), label: dynamic(light: 0x16A34A, dark: 0x86EFAC))
+	private static let archiveTile = (fill: dynamic(light: 0xFFFBEB, dark: 0x78350F), label: warning)
+
+	// MARK: The two palettes
+
+	/// A color of the screen: `light` under the light appearance, `dark` under the dark one (0xRRGGBB, sRGB), each with
+	/// its own opacity.
+	static func dynamic(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
+		Color(nsColor: dynamicColor(light: light, dark: dark, lightAlpha: lightAlpha, darkAlpha: darkAlpha))
+	}
+
+	/// The AppKit color behind `dynamic`: resolved by the appearance it is drawn in, as AppKit resolves its own colors.
+	/// In the app that is the system's appearance, which the window follows; the tests pin one.
+	static func dynamicColor(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> NSColor {
+		NSColor(name: nil) { appearance in
+			appearance.isDark ? NSColor(hex: dark, alpha: darkAlpha) : NSColor(hex: light, alpha: lightAlpha)
 		}
 	}
 
@@ -78,15 +117,21 @@ enum Theme {
 	static let nameLine: CGFloat = 20.5     // 16 pt
 }
 
-extension Color {
-	/// An opaque sRGB color from 0xRRGGBB.
-	init(hex: UInt32) {
+extension NSAppearance {
+	/// True for the dark appearance and its high-contrast variant; false for the light ones.
+	var isDark: Bool {
+		bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+	}
+}
+
+extension NSColor {
+	/// An sRGB color from 0xRRGGBB.
+	convenience init(hex: UInt32, alpha: CGFloat = 1) {
 		self.init(
-			.sRGB,
-			red: Double((hex >> 16) & 0xFF) / 255,
-			green: Double((hex >> 8) & 0xFF) / 255,
-			blue: Double(hex & 0xFF) / 255,
-			opacity: 1
+			srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+			green: CGFloat((hex >> 8) & 0xFF) / 255,
+			blue: CGFloat(hex & 0xFF) / 255,
+			alpha: alpha
 		)
 	}
 }

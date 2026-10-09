@@ -779,71 +779,160 @@ private final class FakeUpdaterController: NSObject, NSMenuItemValidation {
 	}
 }
 
-/// The screen laid out by SwiftUI without a window on the screen. With HANGEUL_FILENAME_FIXER_SNAPSHOTS set to a
-/// folder, each state is also written there as a PNG to look at (never on CI).
+/// The screen laid out by SwiftUI without a window on the screen, under the light appearance and under the dark one.
+/// With HANGEUL_FILENAME_FIXER_SNAPSHOTS set to a folder, each state is also written there as PNGs to look at, at 2x,
+/// one per appearance (`<state>-light.png`, `<state>-dark.png`; never on CI).
 @MainActor
 @Suite struct LayoutTests {
 	let folders = TestFolders()
 
-	private func host(_ model: AppModel, width: CGFloat = 470, height: CGFloat = 768) -> NSHostingView<RootView> {
+	private func host(_ model: AppModel, appearance: NSAppearance.Name = .aqua, width: CGFloat = 470, height: CGFloat = 768) -> NSHostingView<RootView> {
 		let hosting = NSHostingView(rootView: RootView(model: model))
-		hosting.appearance = NSAppearance(named: .aqua)
+		hosting.appearance = NSAppearance(named: appearance)
 		hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
 		hosting.layoutSubtreeIfNeeded()
 		return hosting
 	}
 
-	private func snapshot(_ hosting: NSView, _ name: String) {
+	private func snapshot(_ model: AppModel, _ name: String, width: CGFloat = 470, height: CGFloat = 768) {
 		guard let folder = ProcessInfo.processInfo.environment["HANGEUL_FILENAME_FIXER_SNAPSHOTS"], !folder.isEmpty else {
 			return
 		}
 
-		// A window that is never shown gives the views a backing store to draw into.
-		let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: true)
-		window.appearance = NSAppearance(named: .aqua)
-		window.contentView = hosting
-		hosting.layoutSubtreeIfNeeded()
-		RunLoop.current.run(until: Date().addingTimeInterval(0.3))
-		guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
-			return
+		for (appearance, suffix) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
+			let hosting = host(model, appearance: appearance, width: width, height: height)
+			let bitmap = render(hosting, appearance: appearance)
+			try? bitmap?.pngData()?.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name)-\(suffix).png"))
 		}
-
-		hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
-		try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: folder).appendingPathComponent(name + ".png"))
 	}
 
 	@Test func bothScreensLayOutWithoutAWindow() async throws {
+		let shell = FakeShell()
 		let model = AppModel(conversions: ConversionTracker())
+		model.shell = shell
 		let first = host(model)
 		#expect(first.frame.size == NSSize(width: 470, height: 768))
-		snapshot(first, "first")
+		snapshot(model, "first")
 
 		model.setDragging(true)
-		snapshot(host(model), "first-dragging")
+		snapshot(model, "first-dragging")
 		model.setDragging(false)
 
 		model.setFile(try folders.writeSource(decomposed("홍길동_보고서_진짜최종_찐최종.docx")))
 		await model.previewSettled()
-		snapshot(host(model), "detail-keep")
+		snapshot(model, "detail-keep")
 
 		model.changeNameMode(.rename)
-		snapshot(host(model), "detail-rename-empty")
+		snapshot(model, "detail-rename-empty")
 		model.setBaseName("홍길동_보고서")
 		await model.previewSettled()
-		snapshot(host(model), "detail-rename")
+		snapshot(model, "detail-rename")
 		// A window that is narrower and lower than the card needs (a small screen): the card ends above the window's
 		// edge and scrolls inside.
-		snapshot(host(model, width: 440, height: 528), "detail-smallest")
+		snapshot(model, "detail-smallest", width: 440, height: 528)
 		// A very wide window: the card stops growing at 900 pt and stays in the middle.
-		snapshot(host(model, width: 1440, height: 868), "detail-wide")
+		snapshot(model, "detail-wide", width: 1440, height: 868)
+
+		// Another folder for the copy, with the name kept: no " (1)" there.
+		model.changeNameMode(.keep)
+		shell.directoryAnswer = folders.output
+		model.selectOutputDirectory()
+		await model.previewSettled()
+		#expect(model.resultHint == nil)
+		snapshot(model, "detail-location")
 
 		model.convertFile()
 		await model.conversionSettled()
 		#expect(model.status?.tone == .success)
-		snapshot(host(model), "detail-created")
+		snapshot(model, "detail-created")
 
 		model.handleDrop(paths: [folders.output, folders.source])
 		await model.previewSettled()
-		snapshot(host(model), "detail-folder")
+		snapshot(model, "detail-folder")
+	}
+
+	/// What one appearance makes of a screen: the frames of its AppKit views (the drop zone, the name field, the pointer
+	/// areas and SwiftUI's own) and of the elements an assistive app sees, and the pixels of the drawing.
+	private struct Rendering {
+		let frames: [NSRect]
+		let elements: [(identifier: String, frame: NSRect)]
+		let bitmap: NSBitmapImageRep
+		let hosting: NSHostingView<RootView>
+	}
+
+	private func rendering(_ model: AppModel, _ appearance: NSAppearance.Name) throws -> Rendering {
+		let hosting = host(model, appearance: appearance)
+		let bitmap = try #require(render(hosting, appearance: appearance))
+		let reader = ScreenReader.isAvailable ? ScreenReader(hosting) : nil
+		return Rendering(
+			frames: findViews(NSView.self, in: hosting).map(\.frame),
+			elements: (reader?.elements ?? []).map { ($0.identifier, $0.frame) },
+			bitmap: bitmap,
+			hosting: hosting
+		)
+	}
+
+	/// Under the dark appearance the screen is laid out exactly as under the light one, and drawn in the other palette:
+	/// every view and every element in the same frame, the window's background and the card dark where they are light.
+	private func expectDarkIsLightRelaid(_ model: AppModel, _ state: String) throws {
+		let light = try rendering(model, .aqua)
+		let dark = try rendering(model, .darkAqua)
+
+		#expect(light.frames.count > 3 && light.frames == dark.frames, "\(state): the views stand where they stand in light")
+		#expect(light.elements.count == dark.elements.count, "\(state)")
+		for (first, second) in zip(light.elements, dark.elements) {
+			#expect(first.identifier == second.identifier && first.frame == second.frame, "\(state): \(first) is \(second) in dark")
+		}
+		#expect(light.hosting.effectiveAppearance.isDark == false && dark.hosting.effectiveAppearance.isDark)
+
+		// The window's background in its corner (2 pt in), the card 8 pt under its top edge, where nothing else is drawn.
+		// The bitmap's generic RGB rounds the dark values a little differently under Rosetta (up to 5 a channel), so the
+		// tolerance is wider than the light palette needs; the luminance checks below keep dark dark and light light.
+		for (rendering, appearance) in [(light, NSAppearance.Name.aqua), (dark, .darkAqua)] {
+			let background = rendering.bitmap.hex(atX: 2, y: 2)
+			let card = rendering.bitmap.hex(atX: 40, y: 22)
+			#expect(isClose(background, hex(Theme.background, in: appearance), within: 8), "\(state), \(appearance.rawValue): \(String(background, radix: 16))")
+			#expect(isClose(card, hex(Theme.card, in: appearance), within: 8), "\(state), \(appearance.rawValue): \(String(card, radix: 16))")
+		}
+		#expect(luminance(light.bitmap.hex(atX: 2, y: 2)) > 0.9 && luminance(dark.bitmap.hex(atX: 2, y: 2)) < 0.05, "\(state)")
+		#expect(luminance(light.bitmap.hex(atX: 40, y: 22)) > 0.9 && luminance(dark.bitmap.hex(atX: 40, y: 22)) < 0.05, "\(state)")
+	}
+
+	@Test func theDarkAppearanceRelaysTheSameScreensInTheDarkPalette() async throws {
+		let model = AppModel(conversions: ConversionTracker())
+		try expectDarkIsLightRelaid(model, "first")
+
+		model.setFile(try folders.writeSource(decomposed("홍길동_보고서_진짜최종_찐최종.docx")))
+		await model.previewSettled()
+		try expectDarkIsLightRelaid(model, "detail-keep")
+
+		model.changeNameMode(.rename)
+		model.setBaseName("홍길동_보고서")
+		await model.previewSettled()
+		try expectDarkIsLightRelaid(model, "detail-rename")
+		// The name field takes its colors from the appearance it is in, as the SwiftUI views do.
+		let dark = try rendering(model, .darkAqua)
+		let field = try #require(findView(NameTextField.self, in: dark.hosting))
+		#expect(field.effectiveAppearance.isDark)
+		#expect(hex(try #require(field.textColor), in: .darkAqua) == hex(Theme.text, in: .darkAqua))
+		#expect(hex(try #require(field.textColor), in: .aqua) == hex(Theme.text, in: .aqua))
+		let placeholder = try #require(field.placeholderAttributedString?.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor)
+		#expect(hex(placeholder, in: .darkAqua) != hex(placeholder, in: .aqua))
+
+		model.convertFile()
+		await model.conversionSettled()
+		#expect(model.status?.tone == .success)
+		try expectDarkIsLightRelaid(model, "detail-created")
+
+		// The system is switched while the app runs: the same views, redrawn in the other palette (the window sets no
+		// appearance of its own, so this is what reaches it).
+		let switched = try rendering(model, .aqua)
+		#expect(luminance(switched.bitmap.hex(atX: 40, y: 22)) > 0.9)
+		let again = try #require(render(switched.hosting, appearance: .darkAqua))
+		#expect(isClose(again.hex(atX: 2, y: 2), hex(Theme.background, in: .darkAqua), within: 8), "\(String(again.hex(atX: 2, y: 2), radix: 16))")
+		#expect(isClose(again.hex(atX: 40, y: 22), hex(Theme.card, in: .darkAqua), within: 8), "\(String(again.hex(atX: 40, y: 22), radix: 16))")
+		#expect(findViews(NSView.self, in: switched.hosting).map(\.frame) == switched.frames, "nothing moved")
+		let back = try #require(render(switched.hosting, appearance: .aqua))
+		#expect(isClose(back.hex(atX: 40, y: 22), hex(Theme.card, in: .aqua), within: 8))
 	}
 }
