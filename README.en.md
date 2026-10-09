@@ -118,7 +118,11 @@ If you need to keep Korean filenames in Gmail, attach the file from **Safari** i
 </p>
 
 The window fits its content. It gets taller once a file is selected, and only its width can be resized.<br>
-The app follows the system appearance, light or dark (since 2.1.0). The screenshots in this document show light mode.
+The app follows the system appearance, light or dark (since 2.1.0). Below is the same first screen in dark mode; the other screenshots in this document show light mode.
+
+<p align="left">
+  <img src="images/file-select-dark.png" alt="Select file screen in dark mode" width="620" />
+</p>
 
 ### Choose the Output Name
 
